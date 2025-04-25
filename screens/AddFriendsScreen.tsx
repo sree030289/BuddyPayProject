@@ -1,4 +1,4 @@
-// Updated AddFriendsScreen.tsx
+// Fixed AddFriendsScreen.tsx with TypeScript fixes
 import React, { useState, useEffect } from 'react';
 import { StatusBar } from 'react-native';
 import {
@@ -19,9 +19,15 @@ import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
 
+// Define proper types for navigation and route
+type AddFriendsRouteProp = RouteProp<RootStackParamList, 'AddFriendsScreen'>;
+type Navigation = NativeStackNavigationProp<RootStackParamList>;
+
 const AddFriendsScreen = () => {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const route = useRoute<RouteProp<RootStackParamList, 'AddFriendsScreen'>>();
+  const navigation = useNavigation<Navigation>();
+  const route = useRoute<AddFriendsRouteProp>();
+  
+  // Get params with proper type safety
   const userId = route.params?.userId;
   const email = route.params?.email;
   const groupId = route.params?.groupId;
@@ -98,22 +104,22 @@ const AddFriendsScreen = () => {
       selected: true
     }));
 
-    console.log('Navigating to VerifyContactsScreen with params:', {
+    // Prepare properly typed navigation params based on flow type
+    const navigationParams: any = {
       selectedContacts: contactsWithSelectionState,
       userId,
-      email,
-      groupId,
-      groupName
-    });
+      email
+    };
 
-    // Make sure to use the exact screen name as registered in the navigation
-    navigation.navigate('VerifyContactsScreen', {
-      selectedContacts: contactsWithSelectionState,
-      userId,
-      email,
-      // Only pass these if in group flow
-      ...(isGroupFlow && { groupId, groupName })
-    });
+    // Add group-specific parameters only for group flow
+    if (isGroupFlow) {
+      navigationParams.groupId = groupId;
+      navigationParams.groupName = groupName;
+    }
+
+    console.log('Navigating to VerifyContactsScreen with params:', navigationParams);
+
+    navigation.navigate('VerifyContactsScreen', navigationParams);
   };
 
   return (

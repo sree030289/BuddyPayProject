@@ -90,48 +90,85 @@ const PINEntryScreen = () => {
   }, []);
   
   useEffect(() => {
-    const loadUserDataAndTriggerBiometrics = async () => {
+// Updated loadUserDataAndTriggerBiometrics function with better error handling and delays
+const loadUserDataAndTriggerBiometrics = async () => {
+  try {
+    console.log("Starting to load user data and check biometrics...");
+    
+    // Load stored credentials
+    const storedEmail = await SecureStore.getItemAsync('user_email');
+    const storedName = await SecureStore.getItemAsync('user_display_name');
+    const failCount = await SecureStore.getItemAsync('pin_fail_count');
+    const biometricsEnabled = await SecureStore.getItemAsync('biometrics_enabled');
+    
+    console.log(`Stored email: ${storedEmail ? 'exists' : 'not found'}, Biometrics enabled: ${biometricsEnabled}`);
+    
+    if (!storedEmail) {
+      // Show no credentials modal instead of deregistering
+      setShowNoCredentialsModal(true);
+      return;
+    }
+    
+    if (storedEmail) {
+      setEmail(storedEmail);
+      setForgotPasswordEmail(storedEmail); // Pre-fill forgot password email
+    }
+    
+    if (storedName) {
+      setUserName(storedName);
+    }
+    
+    if (failCount) {
+      setPinFailCount(parseInt(failCount, 10));
+    }
+    
+    // First check if device has biometric capabilities
+    const hardware = await LocalAuthentication.hasHardwareAsync();
+    if (!hardware) {
+      console.log("Device doesn't support biometric authentication");
+      return;
+    }
+    
+    // For iOS, ensure Face ID permissions are ready - this helps avoid the "missing_usage_description" error
+    if (Platform.OS === 'ios') {
+      console.log("iOS device detected, ensuring Face ID permissions are available");
       try {
-        // Load stored credentials
-        const storedEmail = await SecureStore.getItemAsync('user_email');
-        const storedName = await SecureStore.getItemAsync('user_display_name');
-        const failCount = await SecureStore.getItemAsync('pin_fail_count');
+        const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
+        console.log("Supported authentication types:", types);
         
-        if (!storedEmail) {
-          // Show no credentials modal instead of deregistering
-          setShowNoCredentialsModal(true);
-          return;
-        }
-        
-        if (storedEmail) {
-          setEmail(storedEmail);
-          setForgotPasswordEmail(storedEmail); // Pre-fill forgot password email
-        }
-        
-        if (storedName) {
-          setUserName(storedName);
-        }
-        
-        if (failCount) {
-          setPinFailCount(parseInt(failCount, 10));
-        }
-        
-        // Check biometric capability and try authentication
-        const biometricsCheck = await checkBiometricAvailability();
-        console.log("Biometrics check result:", biometricsCheck);
-        
-        if (biometricsCheck.available && biometricsCheck.enrolled) {
-          setBiometricType(biometricsCheck.biometricType);
-          // Attempt biometric authentication automatically with slight delay
-          setTimeout(() => {
-            setShowBiometricPrompt(true);
-            attemptBiometricLogin(storedEmail);
-          }, 800);
-        }
-      } catch (error) {
-        console.error('Error during initial setup:', error);
+        // Wait a bit longer on iOS to ensure permissions are fully initialized
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } catch (permError) {
+        console.error("Error checking Face ID permissions:", permError);
+        return;
       }
-    };
+    }
+    
+    // Check biometric capability and try authentication
+    const biometricsCheck = await checkBiometricAvailability();
+    console.log("Biometrics check result:", biometricsCheck);
+    
+    // Only proceed with biometric login if explicitly enabled by the user
+    if (biometricsCheck.available && biometricsCheck.enrolled && biometricsEnabled === 'true') {
+      setBiometricType(biometricsCheck.biometricType);
+      console.log(`Biometric type set to: ${biometricsCheck.biometricType}`);
+      
+      // Attempt biometric authentication with a longer delay for iOS Face ID
+      const biometricDelay = Platform.OS === 'ios' ? 1500 : 800;
+      console.log(`Setting up biometric authentication with ${biometricDelay}ms delay`);
+      
+      setTimeout(() => {
+        console.log("Triggering biometric prompt");
+        setShowBiometricPrompt(true);
+        attemptBiometricLogin(storedEmail);
+      }, biometricDelay);
+    } else {
+      console.log("Biometrics available but not enabled, or not available");
+    }
+  } catch (error) {
+    console.error('Error during initial setup:', error);
+  }
+};
     
     loadUserDataAndTriggerBiometrics();
   }, []);
@@ -211,17 +248,20 @@ const PINEntryScreen = () => {
       setShowPinSetupModal(false);
       setLoading(false);
       
-      // Show success message
+      // Show success message and wait for user acknowledgment before showing biometric setup
       Alert.alert(
         'PIN Setup Complete',
         'Your new PIN has been successfully set up.',
-        [{ text: 'OK' }]
+        [{ 
+          text: 'OK',
+          onPress: () => {
+            // Only show biometric setup after user acknowledges PIN setup
+            setTimeout(() => {
+              showBiometricSetupPrompt();
+            }, 300);
+          }
+        }]
       );
-      
-      // Show biometric setup prompt
-      setTimeout(() => {
-        showBiometricSetupPrompt();
-      }, 500);
       
     } catch (error) {
       console.error('Error setting up PIN:', error);
@@ -416,7 +456,23 @@ const PINEntryScreen = () => {
           enrolled: false 
         };
       }
-
+  
+      // Check for necessary permissions on iOS for Face ID
+      if (Platform.OS === 'ios') {
+        try {
+          // This will throw if permissions aren't configured correctly
+          await LocalAuthentication.supportedAuthenticationTypesAsync();
+        } catch (permError) {
+          console.error('iOS Face ID permission error:', permError);
+          return { 
+            available: false, 
+            biometricType: 'none',
+            enrolled: false,
+            error: 'missing_permissions'
+          };
+        }
+      }
+  
       // Check if biometrics is enrolled on the device
       const enrolled = await LocalAuthentication.isEnrolledAsync();
       if (!enrolled) {
@@ -437,7 +493,7 @@ const PINEntryScreen = () => {
       } else if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
         biometricType = 'Fingerprint';
       }
-
+  
       // Check if biometrics is enabled in app settings
       const biometricsEnabled = await SecureStore.getItemAsync('biometrics_enabled');
       console.log('Biometrics enabled status:', biometricsEnabled);
@@ -459,68 +515,164 @@ const PINEntryScreen = () => {
   
 
   // Attempt biometric login
-  const attemptBiometricLogin = async (userEmail: string) => {
-    try {
-      setBiometricLoading(true);
-      setError('');
+ // Modified attemptBiometricLogin function to improve iOS Face ID handling
+// Fix for the attemptBiometricLogin function to better handle iOS Face ID
+
+const attemptBiometricLogin = async (userEmail: string) => {
+  try {
+    setBiometricLoading(true);
+    setError('');
+    
+    // Get the appropriate biometric type
+    const biometryInfo = await checkBiometricAvailability();
+    console.log(`Starting biometric login process for ${userEmail} with type: ${biometryInfo.biometricType}`);
+    
+    if (!biometryInfo.available) {
+      console.log('Biometrics not available on this device');
+      Alert.alert(
+        'Biometric Login Unavailable',
+        'Biometric authentication is not available on this device. Please use your PIN instead.',
+        [{ text: 'OK' }]
+      );
+      setBiometricLoading(false);
+      setShowBiometricPrompt(false);
+      return;
+    }
+    
+    // Special handling for first-time setup
+    if (!biometryInfo.enrolled) {
+      console.log('Biometrics not enrolled in the app yet');
       
-      // Get the appropriate biometric type
-      const biometryInfo = await checkBiometricAvailability();
-      
-      if (!biometryInfo.available || !biometryInfo.enrolled) {
-        console.log('Biometrics not available or enrolled');
+      // If the user has just logged in with password, offer to set up biometrics
+      if (noCredentialsPassword) {
+        const setupBiometrics = await Alert.alert(
+          'Set Up Biometric Login',
+          `Would you like to enable ${biometryInfo.biometricType} login for faster access next time?`,
+          [
+            {
+              text: 'Not Now',
+              style: 'cancel',
+              onPress: () => {
+                setBiometricLoading(false);
+                setShowBiometricPrompt(false);
+              }
+            },
+            {
+              text: 'Enable',
+              onPress: async () => {
+                try {
+                  // Enable biometric login using the provided credentials
+                  await enableBiometricLogin(userEmail, noCredentialsPassword);
+                  await SecureStore.setItemAsync('biometrics_enabled', 'true');
+                  
+                  // Let the user know biometrics were enabled successfully
+                  Alert.alert(
+                    'Success',
+                    `${biometryInfo.biometricType} login enabled successfully!`,
+                    [{ text: 'OK' }]
+                  );
+                  
+                  // Continue with PIN entry
+                  setBiometricLoading(false);
+                  setShowBiometricPrompt(false);
+                } catch (error) {
+                  console.error('Error enabling biometrics during login:', error);
+                  Alert.alert(
+                    'Error',
+                    'Failed to enable biometric login. Please try again later.',
+                    [{ text: 'OK' }]
+                  );
+                  setBiometricLoading(false);
+                  setShowBiometricPrompt(false);
+                }
+              }
+            }
+          ]
+        );
+        return;
+      } else {
+        // Just notify the user that biometric login hasn't been set up yet
         Alert.alert(
-          'Biometric Login Unavailable',
-          'Biometric authentication is not available or not set up on this device. Please use your PIN instead.',
+          'Biometric Login Not Set Up',
+          'Biometric authentication has not been enabled for your account. Please use your PIN.',
           [{ text: 'OK' }]
         );
         setBiometricLoading(false);
         setShowBiometricPrompt(false);
         return;
       }
-      
-      // Prompt for biometric authentication with comprehensive options
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: `Login with ${biometryInfo.biometricType}`,
-        cancelLabel: 'Use PIN Instead',
-        disableDeviceFallback: true, 
-        requireConfirmation: false, // Reduce friction
-      });
-      
-      if (result.success) {
-        try {
-          // Perform biometric login with stored credentials
-          await loginWithBiometrics(userEmail);
-          
-          // Reset PIN fail count on successful login
-          await resetPinFailCount();
-          
-          // Navigate to dashboard
-          navigation.replace('MainDashboard', { screen: 'Friends' });
-        } catch (error) {
-          console.error('Error during biometric login:', error);
-          setError('Biometric login failed. Please use your PIN.');
-          Vibration.vibrate(400);
-        }
-      } else {
-        console.log('Biometric authentication cancelled or failed');
-        // Reset biometric prompt state
-        setShowBiometricPrompt(false);
+    }
+    
+    // Platform-specific authentication options
+    const authOptions = {
+      promptMessage: `Login with ${biometryInfo.biometricType}`,
+      cancelLabel: 'Use PIN Instead',
+      disableDeviceFallback: true,
+      requireConfirmation: false, // Reduce friction
+      fallbackLabel: '', // Prevent automatic fallback to passcode on iOS
+    };
+    
+    // Wait a moment on iOS before showing Face ID prompt to ensure UI is ready
+    if (Platform.OS === 'ios' && biometryInfo.biometricType === 'Face ID') {
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
+    console.log('Calling authenticateAsync with options:', JSON.stringify(authOptions));
+    const result = await LocalAuthentication.authenticateAsync(authOptions);
+    console.log('Authentication result:', JSON.stringify(result));
+    
+    if (result.success) {
+      console.log('Biometric authentication successful, performing login...');
+      try {
+        // Perform biometric login with stored credentials
+        await loginWithBiometrics(userEmail);
+        console.log('Biometric login process complete');
         
-        // Provide user feedback
+        // Reset PIN fail count on successful login
+        await resetPinFailCount();
+        
+        // Navigate to dashboard
+        navigation.replace('MainDashboard', { screen: 'Friends' });
+      } catch (error) {
+        console.error('Error during biometric login process:', error);
+        setError('Biometric login failed. Please use your PIN.');
+        Vibration.vibrate(400);
+      }
+    } else {
+      console.log('Biometric authentication unsuccessful:', result.error);
+      
+      // Don't show error for iOS Face ID missing permissions - this is a system issue
+      if (result.error === 'missing_usage_description') {
+        console.error('Face ID permission missing in Info.plist. This should not happen with proper configuration.');
+        setError('Face ID is not available. Please use your PIN.');
+      } 
+      // Only show an alert for user cancellation, not for system cancellations
+      else if (result.error === 'user_cancel') {
         Alert.alert(
           'Authentication Cancelled',
           'Biometric login was cancelled. Please use your PIN.',
           [{ text: 'OK' }]
         );
       }
-    } catch (error) {
-      console.error('Biometric authentication error:', error);
-      setError('Biometric authentication error. Please use your PIN.');
-    } finally {
-      setBiometricLoading(false);
+      // For lockouts, provide appropriate messaging
+      else if (result.error === 'lockout') {
+        Alert.alert(
+          'Biometric Login Locked',
+          'Too many failed attempts. Please use your PIN instead.',
+          [{ text: 'OK' }]
+        );
+      }
+      // For app cancellations (Face ID disappearing quickly), just fall back to PIN silently
     }
-  };
+  } catch (error) {
+    console.error('Unexpected error in biometric authentication:', error);
+    setError('Authentication error. Please use your PIN.');
+  } finally {
+    // Always clean up the biometric prompt state
+    setBiometricLoading(false);
+    setShowBiometricPrompt(false);
+  }
+};
 
   
 
@@ -703,8 +855,8 @@ const PINEntryScreen = () => {
         <View
           key={i}
           style={[
-            styles.pinDot,
-            i < currentPin.length ? styles.pinDotFilled : {}
+            styles.pinSetupDot,
+            i < currentPin.length ? styles.pinSetupDotFilled : {}
           ]}
         />
       );
@@ -1610,15 +1762,28 @@ const styles = StyleSheet.create({
       fontWeight: 'bold',
     },
     pinSetupNumberButton: {
-        backgroundColor: '#f0f0f0', // Lighter background for visibility
-        borderWidth: 1,
-        borderColor: '#ddd',
-      },
-      pinSetupNumberText: {
-        color: '#333', // Darker text color for contrast
-        fontSize: 24,
-        fontWeight: '500',
-      }
+      backgroundColor: 'rgba(10, 110, 255, 0.2)', // Light blue background to match theme
+      borderWidth: 1,
+      borderColor: 'rgba(10, 110, 255, 0.3)',
+    },
+    pinSetupNumberText: {
+      color: '#FFFFFF', // White text for contrast on blue background
+      fontSize: 32,
+      fontWeight: '400',
+    },
+    pinSetupDot: {
+      width: 16,
+      height: 16,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: '#0A6EFF', // Blue border for visibility
+      backgroundColor: 'transparent', // Explicitly transparent background
+      marginHorizontal: 10,
+    },
+    pinSetupDotFilled: {
+      backgroundColor: '#0A6EFF', // Blue fill to match the theme
+      borderColor: '#0A6EFF',
+    },
   });
   
   export default PINEntryScreen;

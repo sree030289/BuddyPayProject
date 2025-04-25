@@ -1,4 +1,4 @@
-// Updated VerifyContactsScreen.tsx with fixed data structure
+// Fixed VerifyContactsScreen.tsx with TypeScript fixes
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -11,7 +11,8 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
-  Share
+  Share,
+  Linking
 } from 'react-native';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -19,7 +20,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
 import { useAuth } from '../components/AuthContext';
 import { db } from '../services/firebaseConfig';
-import { collection, doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { collection, doc, getDoc, updateDoc, arrayUnion, setDoc, addDoc } from 'firebase/firestore';
 
 type VerifyContactsRouteProp = RouteProp<RootStackParamList, 'VerifyContactsScreen'>;
 type Navigation = NativeStackNavigationProp<RootStackParamList>;
@@ -38,10 +39,21 @@ const VerifyContactsScreen = () => {
   const { user } = useAuth();
   
   // Extract parameters with proper type checking
-  const selectedContacts = route.params.selectedContacts || [];
+  const selectedContacts = route.params.selectedContacts || route.params.selected || [];
   const groupId = route.params.groupId || '';
   const groupName = route.params.groupName || 'Group';
-  const userId = route.params.userId || user?.uid;
+  const userId = route.params.userId || user?.uid || '';
+  // Ensure email is always a string or undefined, never null
+  const email = route.params.email || user?.email || undefined;
+  
+  console.log('VerifyContactsScreen mounted with params:', {
+    selectedContacts,
+    groupId,
+    groupName,
+    userId,
+    email,
+    userObj: user
+  });
   
   // State variables
   const [loading, setLoading] = useState(false);
@@ -50,6 +62,7 @@ const VerifyContactsScreen = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [groupData, setGroupData] = useState<any>(null);
+  const [userPhone, setUserPhone] = useState<string>('');
 
   // For UI visibility
   const [showSuccess, setShowSuccess] = useState(false);
@@ -57,12 +70,39 @@ const VerifyContactsScreen = () => {
   // Check if this is a group flow or a friend flow
   const isGroupFlow = !!groupId;
   
+  // Fetch user phone number if available
+  useEffect(() => {
+    const fetchUserPhone = async () => {
+      if (!user || !user.email) return;
+      
+      try {
+        const userQuery = collection(db, 'users');
+        const userRef = doc(userQuery, user.uid);
+        const userDoc = await getDoc(userRef);
+        
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          if (userData.phone) {
+            setUserPhone(userData.phone);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching user phone:', error);
+      }
+    };
+    
+    fetchUserPhone();
+  }, [user]);
+  
   useEffect(() => {
     if (isGroupFlow) {
       // Fetch group data for better context
       fetchGroupData();
       // Create a single invite token for the group
       createGroupInviteToken();
+    } else {
+      // Create a friend invite token
+      createFriendInviteToken();
     }
   }, []);
   
@@ -85,7 +125,12 @@ const VerifyContactsScreen = () => {
   const createGroupInviteToken = async () => {
     // In a real implementation, this would call a Cloud Function to generate a token
     // For now, we'll just create a simple token based on the group ID and timestamp
-    setInviteToken(`${groupId}-${Date.now()}`);
+    setInviteToken(`group-${groupId}-${Date.now()}`);
+  };
+  
+  const createFriendInviteToken = async () => {
+    // Create a simple token for friend invitation
+    setInviteToken(`friend-${userId}-${Date.now()}`);
   };
 
   const handleAddToGroup = async () => {
@@ -154,7 +199,6 @@ const VerifyContactsScreen = () => {
         }
         
         // Simulate sending invites
-        // In a real app, you'd call a Cloud Function to send SMS/email invites
         for (let i = 0; i < formattedMembers.length; i++) {
           setCurrentIndex(i);
           const member = formattedMembers[i];
@@ -217,10 +261,142 @@ const VerifyContactsScreen = () => {
   };
 
   const handleAddToFriends = async () => {
-    // Implementation for friends flow
-    Alert.alert('Not Implemented', 'This feature is coming soon!');
-  };
+    if (!user) {
+      Alert.alert('Error', 'User information missing');
+      return;
+    }
 
+    setLoading(true);
+    setSendingInvites(true);
+    setCurrentIndex(0);
+    
+    try {
+      // Create a simple invite code
+      const inviteCode = inviteToken || `BUDDY-${Date.now().toString().slice(-6)}`;
+      
+      // Get first contact's info to share SMS with
+      const firstContact = selectedContacts[0];
+      const contactPhone = firstContact.phoneNumbers && firstContact.phoneNumbers.length > 0
+        ? firstContact.phoneNumbers[0].number
+        : '';
+      const contactName = firstContact.name || 'Friend';
+      
+      // Prepare SMS message
+      const inviteMessage = `Hi ${contactName}! I'm using BuddyPay to split expenses with friends. Download the app and use this code to connect with me: ${inviteCode} - ${user.displayName || email || ''}`;
+      
+      // For friends flow, we add to Firebase first, then open SMS
+      // Process each contact
+      for (let i = 0; i < selectedContacts.length; i++) {
+        setCurrentIndex(i);
+        const contact = selectedContacts[i];
+        
+        // We need user's phone number to add friends data in Firestore
+        if (userPhone) {
+          try {
+            // Set the contact data in Firebase
+            const friendsRef = collection(db, 'users', userPhone, 'friends');
+            await addDoc(friendsRef, {
+              name: contact.name,
+              phone: contact.phoneNumbers && contact.phoneNumbers.length > 0 
+                ? contact.phoneNumbers[0].number 
+                : null,
+              email: contact.email || null,
+              status: 'pending',
+              totalAmount: 0,
+              inviteCode: inviteCode,
+              dateAdded: new Date().toISOString()
+            });
+          } catch (error) {
+            console.error('Error adding friend data:', error);
+          }
+        }
+        
+        // Simulate delay for progress indication
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
+      setAddedCount(selectedContacts.length);
+      setLoading(false);
+      setShowSuccess(true);
+      
+      // For the first contact, try to open SMS
+      if (contactPhone) {
+        // Show success alert with option to send SMS
+        setTimeout(() => {
+          Alert.alert(
+            'Friends Added',
+            `${selectedContacts.length} contact(s) added. Would you like to send an invitation SMS to ${contactName}?`,
+            [
+              {
+                text: 'Send SMS',
+                onPress: () => {
+                  // Open SMS app with prepared message
+                  // Different format for iOS and Android
+                  const separator = Platform.OS === 'ios' ? '&' : '?';
+                  const url = `sms:${contactPhone}${separator}body=${encodeURIComponent(inviteMessage)}`;
+                  
+                  Linking.openURL(url)
+                    .then(() => {
+                      console.log('SMS app opened successfully');
+                      // After SMS is sent (or canceled), navigate back
+                      setTimeout(() => {
+                        navigation.navigate('FriendsScreen', {
+                          refreshTrigger: Date.now(),
+                          toastStatus: `Added ${selectedContacts.length} friend(s) successfully`
+                        });
+                      }, 1000);
+                    })
+                    .catch(err => {
+                      console.error('Error opening SMS app:', err);
+                      navigation.navigate('FriendsScreen', {
+                        refreshTrigger: Date.now(),
+                        toastStatus: `Added ${selectedContacts.length} friend(s) successfully`
+                      });
+                    });
+                }
+              },
+              {
+                text: 'Not Now',
+                onPress: () => {
+                  navigation.navigate('FriendsScreen', {
+                    refreshTrigger: Date.now(),
+                    toastStatus: `Added ${selectedContacts.length} friend(s) successfully`
+                  });
+                }
+              }
+            ]
+          );
+        }, 1000);
+      } else {
+        // No phone number, just show success
+        setTimeout(() => {
+          Alert.alert(
+            'Friends Added',
+            `${selectedContacts.length} contact(s) added successfully.`,
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  navigation.navigate('FriendsScreen', {
+                    refreshTrigger: Date.now(),
+                    toastStatus: `Added ${selectedContacts.length} friend(s) successfully`
+                  });
+                }
+              }
+            ]
+          );
+        }, 1000);
+      }
+    } catch (error) {
+      setLoading(false);
+      console.error('Error adding friends:', error);
+      Alert.alert(
+        'Error',
+        'Failed to add contacts to your friends list. Please try again.'
+      );
+    }
+  };
+  
   const renderContactItem = ({ item, index }: { item: Contact; index: number }) => {
     const contactEmail = item.email || 'No email';
     const contactPhone = item.phoneNumbers && item.phoneNumbers.length > 0
@@ -272,9 +448,13 @@ const VerifyContactsScreen = () => {
              `Ready to add ${selectedContacts.length} contacts`}
           </Text>
           
-          {isGroupFlow && (
+          {isGroupFlow ? (
             <Text style={styles.summarySubtitle}>
               These contacts will be added to "{groupName}" and invited to join BuddyPay
+            </Text>
+          ) : (
+            <Text style={styles.summarySubtitle}>
+              These contacts will be added to your friends list and invited to join BuddyPay
             </Text>
           )}
           

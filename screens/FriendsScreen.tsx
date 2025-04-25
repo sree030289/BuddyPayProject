@@ -1,4 +1,4 @@
-// Updated FriendsScreen.tsx with AuthContext
+// Updated FriendsScreen.tsx with TypeScript fixes
 
 import React, { useState, useCallback } from 'react';
 import {
@@ -28,12 +28,20 @@ import {
 } from 'firebase/firestore';
 import { useAuth } from '../components/AuthContext'; // Import useAuth hook
 
+type FriendsScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'FriendsScreen'>;
+
 interface FriendsScreenProps {
-  navigation: NativeStackNavigationProp<RootStackParamList>;
-  route?: any;
-  toastStatus?: string;
-  refreshTrigger?: number;
-  insideTabNavigator?: boolean;
+  navigation: FriendsScreenNavigationProp;
+  route?: {
+    params?: {
+      userId?: string;
+      email?: string;
+      status?: string;
+      refreshTrigger?: number;
+      insideTabNavigator?: boolean;
+      toastStatus?: string;
+    }
+  };
 }
 
 // Group types and their corresponding icons
@@ -45,20 +53,14 @@ const GROUP_TYPES = {
   "party": "wine-outline"
 };
 
-const FriendsScreen = ({ 
-  navigation, 
-  route, 
-  toastStatus, 
-  refreshTrigger = 0,
-  insideTabNavigator = false
-}: FriendsScreenProps) => {
+const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
   const { user, isLoading: authLoading } = useAuth(); // Get user data from AuthContext
   
   // Get params from route if available
   const routeParams = route?.params || {};
-  const statusFromRoute = routeParams.toastStatus || toastStatus;
-  const refreshTriggerFromRoute = routeParams.refreshTrigger || refreshTrigger;
-  const insideTabNavigatorParam = routeParams.insideTabNavigator || insideTabNavigator;
+  const statusFromRoute = routeParams.status || routeParams.toastStatus;
+  const refreshTriggerFromRoute = routeParams.refreshTrigger || 0;
+  const insideTabNavigatorParam = routeParams.insideTabNavigator || false;
   
   // Debug logging
   React.useEffect(() => {
@@ -207,6 +209,17 @@ const FriendsScreen = ({
     Alert.alert("Coming soon!", "This feature is coming up in future updates.");
   };
 
+  const navigateToAddFriends = () => {
+    // Ensure we're passing only defined properties to match the types
+    const params = {
+      userId: user?.uid,
+      email: user?.email || undefined // Convert null to undefined if needed
+    };
+    
+    console.log('Navigating to AddFriendsScreen with:', params);
+    navigation.navigate('AddFriendsScreen', params);
+  };
+
   const renderFriend = ({ item }: { item: any }) => {
     const bgColors = ['#F44336', '#9C27B0', '#FF9800', '#3F51B5', '#4CAF50', '#009688'];
     const randomColor = bgColors[item.name.charCodeAt(0) % bgColors.length];
@@ -223,7 +236,7 @@ const FriendsScreen = ({
           console.log('Navigating to FriendsDashboardScreen with:', {
             friendId: item.id,
             friendName: item.name,
-            email: user?.email
+            email: user?.email || undefined
           });
           
           navigation.navigate('FriendsDashboardScreen', {
@@ -240,7 +253,7 @@ const FriendsScreen = ({
                 date: '21 Apr 2024'
               }
             ],
-            email: user?.email
+            email: user?.email || undefined
           });
         }}
       >
@@ -260,7 +273,10 @@ const FriendsScreen = ({
         </View>
         
         <View style={styles.amountWrap}>
-          <Text style={[styles.amountText, { color: item.status === 'accepted' ? '#4CAF50' : '#999' }]}>
+          <Text style={[
+            styles.amountText, 
+            { color: item.status === 'accepted' ? '#4CAF50' : '#E65100' }
+          ]}>
             {item.status === 'accepted' ? 'Accepted' : 'Pending'}
           </Text>
         </View>
@@ -320,13 +336,7 @@ const FriendsScreen = ({
           </Text>
           <TouchableOpacity 
             style={styles.addFriendsButton}
-            onPress={() => {
-              console.log('Navigating to AddFriendsScreen with:', { userId: user?.uid, email: user?.email });
-              navigation.navigate('AddFriendsScreen', {
-                userId: user?.uid,
-                email: user?.email
-              });
-            }}
+            onPress={navigateToAddFriends}
           >
             <Icon name="person-add" size={18} color="#0A6EFF" />
             <Text style={styles.addFriendsText}>Add friends</Text>
@@ -370,6 +380,12 @@ const FriendsScreen = ({
             <Icon name="person-add-outline" size={60} color="#bbb" />
             <Text style={styles.emptyStateTitle}>No friends yet.</Text>
             <Text style={styles.emptyStateSubtitle}>Invite someone to split expenses easily!</Text>
+            <TouchableOpacity 
+              style={styles.emptyStateButton}
+              onPress={navigateToAddFriends}
+            >
+              <Text style={styles.emptyStateButtonText}>Add Friends</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <FlatList
@@ -552,6 +568,17 @@ const styles = StyleSheet.create({
     color: '#aaa',
     textAlign: 'center',
     marginTop: 5
+  },
+  emptyStateButton: {
+    marginTop: 20,
+    backgroundColor: '#0A6EFF',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8
+  },
+  emptyStateButtonText: {
+    color: '#fff',
+    fontWeight: 'bold'
   },
   errorContainer: {
     flex: 1,

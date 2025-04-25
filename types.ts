@@ -1,4 +1,4 @@
-// Updated types.ts with PINEntryScreen
+// Updated types.ts with fixed type definitions
 export type RootStackParamList = {
     // Auth and primary screens
     Splash: undefined;
@@ -31,6 +31,7 @@ export type RootStackParamList = {
         status?: string;
         refreshTrigger?: number;
         insideTabNavigator?: boolean;
+        toastStatus?: string; // Added toastStatus property
     };
     ActivityScreen: {
         insideTabNavigator?: boolean;
@@ -43,6 +44,8 @@ export type RootStackParamList = {
     AddFriendsScreen: {
         userId?: string;
         email?: string;
+        groupId?: string; // Added for group flow
+        groupName?: string; // Added for group flow
     };
     VerifyContactsScreen: {
         // For friend flow
@@ -62,6 +65,8 @@ export type RootStackParamList = {
         email?: string;
         status?: string;
         insideTabNavigator?: boolean;
+        toastStatus?: string; // Added toastStatus for consistency
+        refreshTrigger?: number; // Added refreshTrigger for consistency
     };
       
     CreateGroupScreen: {};
@@ -120,12 +125,15 @@ export type RootStackParamList = {
         status?: string;
         refreshTrigger?: number;
         insideTabNavigator?: boolean;
+        toastStatus?: string; // Added toastStatus property
     };
     Groups: {
         userId?: string;
         email?: string;
         status?: string;
         insideTabNavigator?: boolean;
+        toastStatus?: string; // Added toastStatus
+        refreshTrigger?: number; // Added refreshTrigger
     };
     Activity: {
         insideTabNavigator?: boolean;

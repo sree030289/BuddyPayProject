@@ -17,14 +17,17 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.buddypay"
+      "bundleIdentifier": "com.svaag.buddypay",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "This app uses Face ID to provide a secure and convenient login experience."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#c4eaf1"
       },
-      "package": "com.anonymous.buddypay"
+      "package": "com.svaag.buddypay"
     },
     "web": {
       "favicon": "./assets/favicon.png"
