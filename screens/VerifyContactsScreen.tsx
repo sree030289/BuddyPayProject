@@ -340,17 +340,23 @@ const VerifyContactsScreen = () => {
                       console.log('SMS app opened successfully');
                       // After SMS is sent (or canceled), navigate back
                       setTimeout(() => {
-                        navigation.navigate('FriendsScreen', {
-                          refreshTrigger: Date.now(),
-                          toastStatus: `Added ${selectedContacts.length} friend(s) successfully`
+                        navigation.navigate('MainDashboard', {
+                          screen: 'Friends',
+                          params: {
+                            refreshTrigger: Date.now(),
+                            toastStatus: `Added ${selectedContacts.length} friend(s) successfully`
+                          }
                         });
                       }, 1000);
                     })
                     .catch(err => {
                       console.error('Error opening SMS app:', err);
-                      navigation.navigate('FriendsScreen', {
-                        refreshTrigger: Date.now(),
-                        toastStatus: `Added ${selectedContacts.length} friend(s) successfully`
+                      navigation.navigate('MainDashboard', {
+                        screen: 'Friends',
+                        params: {
+                          refreshTrigger: Date.now(),
+                          toastStatus: `Added ${selectedContacts.length} friend(s) successfully`
+                        }
                       });
                     });
                 }
@@ -358,9 +364,12 @@ const VerifyContactsScreen = () => {
               {
                 text: 'Not Now',
                 onPress: () => {
-                  navigation.navigate('FriendsScreen', {
-                    refreshTrigger: Date.now(),
-                    toastStatus: `Added ${selectedContacts.length} friend(s) successfully`
+                  navigation.navigate('MainDashboard', {
+                    screen: 'Friends',
+                    params: {
+                      refreshTrigger: Date.now(),
+                      toastStatus: `Added ${selectedContacts.length} friend(s) successfully`
+                    }
                   });
                 }
               }
@@ -377,9 +386,12 @@ const VerifyContactsScreen = () => {
               {
                 text: 'OK',
                 onPress: () => {
-                  navigation.navigate('FriendsScreen', {
-                    refreshTrigger: Date.now(),
-                    toastStatus: `Added ${selectedContacts.length} friend(s) successfully`
+                  navigation.navigate('MainDashboard', {
+                    screen: 'Friends',
+                    params: {
+                      refreshTrigger: Date.now(),
+                      toastStatus: `Added ${selectedContacts.length} friend(s) successfully`
+                    }
                   });
                 }
               }

@@ -1,149 +1,122 @@
+// Updated SharedTabBar.tsx with consistent positioning
 import React from 'react';
-import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Dimensions } from 'react-native';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { CommonActions } from '@react-navigation/native';
 
 interface SharedTabBarProps {
-  activeTab?: string;
+  activeTab: string;
 }
 
-// This component should only be used in screens that are NOT part of the main tab navigator
-// For example, in modal screens or detail screens where you want to provide navigation back to main tabs
-const SharedTabBar = ({ activeTab }: SharedTabBarProps) => {
+const SharedTabBar: React.FC<SharedTabBarProps> = ({ activeTab }) => {
   const navigation = useNavigation();
-  
-  const navigateToTab = (tabName: string) => {
-    console.log(`Navigating to main dashboard and selecting tab: ${tabName}`);
-    
-    // Determine correct tab name for navigation
-    const screen = tabName === 'Account' || tabName === 'Profile' || tabName === 'Settings' 
-      ? 'Account' 
-      : tabName;
-    
-    // Reset navigation stack and navigate to MainDashboard with specific tab
-    navigation.dispatch(
-      CommonActions.reset({
-        index: 0,
-        routes: [
-          { 
-            name: 'MainDashboard',
-            state: {
-              routes: [
-                { 
-                  name: screen,
-                  params: { insideTabNavigator: true }
-                }
-              ],
-              index: 0
-            }
-          }
-        ],
-      })
-    );
+
+  const navigateTo = (routeName: string) => {
+    // Handle navigation to the selected tab
+    navigation.navigate('MainDashboard', { screen: routeName });
   };
-  
+
   return (
-    <View style={styles.tabBar}>
-      <TouchableOpacity 
-        style={[styles.tabItem, activeTab === 'Friends' && styles.activeTab]} 
-        onPress={() => navigateToTab('Friends')}
+    <View style={styles.container}>
+      <TouchableOpacity
+        style={[styles.tabItem, activeTab === 'Friends' && styles.activeTabItem]}
+        onPress={() => navigateTo('Friends')}
       >
-        <Icon 
-          name={activeTab === 'Friends' ? 'people' : 'people-outline'} 
-          size={24} 
-          color={activeTab === 'Friends' ? '#fff' : '#90CAF9'} 
+        <Icon
+          name={activeTab === 'Friends' ? 'people' : 'people-outline'}
+          size={24}
+          color={activeTab === 'Friends' ? '#0A6EFF' : '#666'}
         />
-        <Text style={[styles.tabLabel, activeTab === 'Friends' && styles.activeTabLabel]}>Friends</Text>
+        <Text style={[styles.tabText, activeTab === 'Friends' && styles.activeTabText]}>
+          Friends
+        </Text>
       </TouchableOpacity>
-      
-      <TouchableOpacity 
-        style={[styles.tabItem, activeTab === 'Groups' && styles.activeTab]} 
-        onPress={() => navigateToTab('Groups')}
+
+      <TouchableOpacity
+        style={[styles.tabItem, activeTab === 'Groups' && styles.activeTabItem]}
+        onPress={() => navigateTo('Groups')}
       >
-        <Icon 
-          name={activeTab === 'Groups' ? 'people-circle' : 'people-circle-outline'} 
-          size={24} 
-          color={activeTab === 'Groups' ? '#fff' : '#90CAF9'} 
+        <Icon
+          name={activeTab === 'Groups' ? 'people-circle' : 'people-circle-outline'}
+          size={24}
+          color={activeTab === 'Groups' ? '#0A6EFF' : '#666'}
         />
-        <Text style={[styles.tabLabel, activeTab === 'Groups' && styles.activeTabLabel]}>Groups</Text>
+        <Text style={[styles.tabText, activeTab === 'Groups' && styles.activeTabText]}>
+          Groups
+        </Text>
       </TouchableOpacity>
-      
-      <TouchableOpacity 
-        style={[styles.tabItem, activeTab === 'Activity' && styles.activeTab]} 
-        onPress={() => navigateToTab('Activity')}
+
+      <TouchableOpacity
+        style={[styles.tabItem, activeTab === 'Activity' && styles.activeTabItem]}
+        onPress={() => navigateTo('Activity')}
       >
-        <Icon 
-          name={activeTab === 'Activity' ? 'bar-chart' : 'bar-chart-outline'} 
-          size={24} 
-          color={activeTab === 'Activity' ? '#fff' : '#90CAF9'} 
+        <Icon
+          name={activeTab === 'Activity' ? 'bar-chart' : 'bar-chart-outline'}
+          size={24}
+          color={activeTab === 'Activity' ? '#0A6EFF' : '#666'}
         />
-        <Text style={[styles.tabLabel, activeTab === 'Activity' && styles.activeTabLabel]}>Activity</Text>
+        <Text style={[styles.tabText, activeTab === 'Activity' && styles.activeTabText]}>
+          Activity
+        </Text>
       </TouchableOpacity>
-      
-      <TouchableOpacity 
-        style={[styles.tabItem, activeTab === 'Account' && styles.activeTab]} 
-        onPress={() => navigateToTab('Account')}
+
+      <TouchableOpacity
+        style={[styles.tabItem, activeTab === 'Account' && styles.activeTabItem]}
+        onPress={() => navigateTo('Account')}
       >
-        <Icon 
-          name={activeTab === 'Account' ? 'person' : 'person-outline'} 
-          size={24} 
-          color={activeTab === 'Account' ? '#fff' : '#90CAF9'} 
+        <Icon
+          name={activeTab === 'Account' ? 'person' : 'person-outline'}
+          size={24}
+          color={activeTab === 'Account' ? '#0A6EFF' : '#666'}
         />
-        <Text style={[styles.tabLabel, activeTab === 'Account' && styles.activeTabLabel]}>Account</Text>
+        <Text style={[styles.tabText, activeTab === 'Account' && styles.activeTabText]}>
+          Account
+        </Text>
       </TouchableOpacity>
     </View>
   );
 };
 
+// Get the window dimensions for positioning
+const { width, height } = Dimensions.get('window');
+
 const styles = StyleSheet.create({
-  tabBar: {
+  container: {
     flexDirection: 'row',
-    height: 60,
-    backgroundColor: '#0A6EFF',
-    justifyContent: 'space-around',
-    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    paddingBottom: Platform.OS === 'ios' ? 24 : 12, // Extra padding for iOS devices with home indicator
+    paddingTop: 12,
     position: 'absolute',
     bottom: 0,
     left: 0,
-    right: 0
+    right: 0,
+    width: '100%',
+    zIndex: 1000, // Ensure tab bar appears above other content
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 5, // Android shadow
   },
   tabItem: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    flex: 1,
-    height: '100%'
   },
-  activeTab: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 8,
-    paddingVertical: 5
+  activeTabItem: {
+    // You could add additional styling for active tab
   },
-  tabLabel: {
-    color: '#90CAF9',
+  tabText: {
     fontSize: 12,
-    marginTop: 2
+    color: '#666',
+    marginTop: 4,
   },
-  activeTabLabel: {
-    color: '#fff'
+  activeTabText: {
+    color: '#0A6EFF',
+    fontWeight: 'bold',
   },
-  centerButtonContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  centerButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#0A6EFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: '#fff',
-    elevation: 5,
-    transform: [{ translateY: -15 }]
-  }
 });
 
 export default SharedTabBar;

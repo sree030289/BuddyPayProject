@@ -11,7 +11,6 @@ import { useAuth } from '../components/AuthContext'; // Import useAuth hook
 const GROUP_TYPES = {
   "flight trip": "airplane-outline",
   "beach trip": "umbrella-outline",
-  "goa trip": "umbrella-outline", // Specific mapping for "Goa Trip"
   "flatmate": "home-outline",
   "gettogether": "people-outline",
   "party": "wine-outline"
@@ -32,7 +31,7 @@ const FriendDashboardScreen = () => {
   const { user, isLoading } = useAuth(); // Use auth context
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, 'FriendsDashboardScreen'>>();
-  const { friendId, friendName, totalOwed, groups } = route.params;
+  const { friendId, friendName, totalOwed, groups = [] } = route.params;
 
   // Avatar background color should match with the one from FriendsScreen
   const getAvatarColor = (name: string) => {
@@ -67,6 +66,16 @@ const FriendDashboardScreen = () => {
   // Get status bar height for proper padding
   const STATUSBAR_HEIGHT = StatusBar.currentHeight || 0;
 
+  // Navigate to GroupDashboardScreen when a group is clicked
+  const handleGroupPress = (group: any) => {
+    navigation.navigate('GroupDashboardScreen', {
+      groupId: group.id,
+      groupName: group.name,
+      groupType: group.type || 'other',
+      totalAmount: group.amount || 0
+    });
+  };
+
   // Show loading indicator while auth data is loading
   if (isLoading) {
     return (
@@ -96,7 +105,7 @@ const FriendDashboardScreen = () => {
             onPress={() => navigation.navigate('FriendSettingsScreen', { 
               friendId: friendId,
               friendName: friendName,
-              email: user?.email
+              email: route.params.email || ''
             })}
           >
             <Icon name="settings-outline" size={24} color="#fff" />
@@ -143,33 +152,50 @@ const FriendDashboardScreen = () => {
       <View style={styles.transactionsContainer}>
         <Text style={styles.sectionHeader}>Shared Groups</Text>
         
-        <View style={styles.transactionItem}>
-          {/* Group icon based on group type moved to left */}
-          <View style={styles.groupIconContainer}>
-            <Icon 
-              name={getGroupIcon(groups[0]?.name || 'Goa Trip') as any} 
-              size={24} 
-              color="#333" 
-              style={styles.groupIcon} 
-            />
-          </View>
-          
-          <View style={styles.transactionDetails}>
-            <View style={styles.groupNameRow}>
-              <Text style={styles.transactionTitle}>{groups[0]?.name || 'Goa Trip'}</Text>
-              {/* If there are multiple group members, show a small icon */}
-              <Icon name="people-outline" size={14} color="#757575" style={{marginLeft: 5}} />
-            </View>
-            <Text style={styles.transactionSubtitle}>
-              {formatDate(groups[0]?.date || '')}
+        {groups.length > 0 ? (
+          // If there are groups, map through them
+          groups.map((group, index) => (
+            <TouchableOpacity 
+              key={index}
+              style={styles.transactionItem}
+              onPress={() => handleGroupPress(group)}
+            >
+              {/* Group icon based on group type moved to left */}
+              <View style={styles.groupIconContainer}>
+                <Icon 
+                  name={getGroupIcon(group?.name || '') as any} 
+                  size={24} 
+                  color="#333" 
+                  style={styles.groupIcon} 
+                />
+              </View>
+              
+              <View style={styles.transactionDetails}>
+                <View style={styles.groupNameRow}>
+                  <Text style={styles.transactionTitle}>{group?.name || ''}</Text>
+                  {/* If there are multiple group members, show a small icon */}
+                  <Icon name="people-outline" size={14} color="#757575" style={{marginLeft: 5}} />
+                </View>
+                <Text style={styles.transactionSubtitle}>
+                  {formatDate(group?.date || '')}
+                </Text>
+              </View>
+              
+              <View style={styles.amountContainer}>
+                <Text style={styles.borrowedText}>you borrowed</Text>
+                <Text style={styles.amountText}>₹{group?.amount || 0}</Text>
+              </View>
+            </TouchableOpacity>
+          ))
+        ) : (
+          // If no groups, show an empty state
+          <View style={styles.emptyStateContainer}>
+            <Text style={styles.emptyStateText}>No shared groups yet</Text>
+            <Text style={styles.emptyStateSubText}>
+              Create a group with {friendName} to track group expenses
             </Text>
           </View>
-          
-          <View style={styles.amountContainer}>
-            <Text style={styles.borrowedText}>you borrowed</Text>
-            <Text style={styles.amountText}>₹{groups[0]?.amount || 2000}</Text>
-          </View>
-        </View>
+        )}
       </View>
 
       {/* Use SharedTabBar instead of custom tab bar */}
@@ -271,7 +297,8 @@ const styles = StyleSheet.create({
   transactionsContainer: {
     flex: 1,
     marginTop: 15,
-    paddingHorizontal: 15
+    paddingHorizontal: 15,
+    paddingBottom: 70 // Add space for tab bar
   },
   sectionHeader: {
     fontSize: 18,
@@ -284,21 +311,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginVertical: 5,
     paddingVertical: 8
-  },
-  dateContainer: {
-    width: 60,
-    alignItems: 'flex-start',
-    marginRight: 5
-  },
-  dateText: {
-    fontSize: 14,
-    color: '#757575',
-    lineHeight: 18
-  },
-  dateYear: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#424242'
   },
   groupIconContainer: {
     marginRight: 10
@@ -335,6 +347,26 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#E65100'
+  },
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 30,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 10,
+    marginTop: 15
+  },
+  emptyStateText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#616161',
+    marginBottom: 5
+  },
+  emptyStateSubText: {
+    fontSize: 14,
+    color: '#9E9E9E',
+    textAlign: 'center',
+    paddingHorizontal: 20
   }
 });
 

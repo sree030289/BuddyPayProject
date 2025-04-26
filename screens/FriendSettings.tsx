@@ -1,5 +1,4 @@
-// FriendSettingsScreen.tsx - Simplified Version
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -7,12 +6,17 @@ import {
   StyleSheet, 
   Modal, 
   SafeAreaView,
-  Alert
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { CommonActions } from '@react-navigation/native';
 import { RootStackParamList } from '../types';
 import { getAuth } from 'firebase/auth';
+import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../services/firebaseConfig';
+import FriendService from '../services/FriendService';
 
 // Define the props for this screen
 type FriendSettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'FriendSettingsScreen'>;
@@ -22,23 +26,109 @@ function FriendSettingsScreen({ route, navigation }: FriendSettingsScreenProps) 
   const { 
     friendId = '',
     friendName = 'Friend', 
-    email = '' 
+    email: userEmail = '' 
   } = route.params;
+  
+  const [friendEmail, setFriendEmail] = useState('');
+  const [friendPhone, setFriendPhone] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [sharedGroups, setSharedGroups] = useState<any[]>([]);
   
   console.log("FriendSettingsScreen opened with params:", {
     friendId, 
     friendName,
-    email
+    userEmail
   });
   
   const auth = getAuth();
   const currentUser = auth.currentUser;
   
-  // Mock shared groups data for UI preview
-  const [sharedGroups] = useState([
-    { id: '1', name: 'Goa Trip' },
-    { id: '2', name: 'Roommates' }
-  ]);
+  // Fetch friend's contact information and shared groups
+  useEffect(() => {
+    const fetchFriendInfo = async () => {
+      try {
+        setLoading(true);
+        // Try to find friend by ID
+        if (friendId) {
+          const userQuery = query(collection(db, 'users'), where('uid', '==', friendId));
+          const userSnapshot = await getDocs(userQuery);
+          
+          if (!userSnapshot.empty) {
+            const userData = userSnapshot.docs[0].data();
+            setFriendEmail(userData.email || '');
+            setFriendPhone(userData.phone || '');
+          }
+        }
+        
+        // If we couldn't find by ID, try with the current user's friends collection
+        if (currentUser && currentUser.email) {
+          const userQuery = query(collection(db, 'users'), where('email', '==', currentUser.email));
+          const userSnapshot = await getDocs(userQuery);
+          
+          if (!userSnapshot.empty) {
+            const userData = userSnapshot.docs[0].data();
+            const userPhone = userData.phone;
+            
+            if (userPhone) {
+              // Get friend data from user's friends collection
+              const friendsRef = collection(db, 'users', userPhone, 'friends');
+              const friendsQuery = query(friendsRef, where('name', '==', friendName));
+              const friendsSnapshot = await getDocs(friendsQuery);
+              
+              if (!friendsSnapshot.empty) {
+                const friendDoc = friendsSnapshot.docs[0];
+                const friendData = friendDoc.data();
+                
+                setFriendEmail(friendData.email || '');
+                setFriendPhone(friendData.phone || '');
+                
+                // Get shared groups
+                if (friendData.groups && Array.isArray(friendData.groups)) {
+                  setSharedGroups(friendData.groups);
+                }
+              }
+            }
+          }
+        }
+        
+        setLoading(false);
+      } catch (error) {
+        console.error("Error fetching friend info:", error);
+        setLoading(false);
+      }
+    };
+    
+    fetchFriendInfo();
+  }, [friendId, friendName, currentUser]);
+  
+  // Helper function to navigate to the Friends screen
+  const navigateToFriendsScreen = (toastMessage: string) => {
+    // Use CommonActions.reset which is more reliable for nested navigation
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [
+          {
+            name: 'MainDashboard',
+            state: {
+              routes: [
+                { 
+                  name: 'Friends', 
+                  params: { 
+                    refresh: true, 
+                    refreshTrigger: Date.now(),
+                    toastStatus: toastMessage 
+                  } 
+                }
+              ],
+              index: 0
+            }
+          }
+        ]
+      })
+    );
+  };
   
   const [showBlockConfirmModal, setShowBlockConfirmModal] = useState(false);
   const [showReportAbuseModal, setShowReportAbuseModal] = useState(false);
@@ -50,31 +140,80 @@ function FriendSettingsScreen({ route, navigation }: FriendSettingsScreenProps) 
     return bgColors[name.charCodeAt(0) % bgColors.length];
   };
   
-  // Mock handlers
-  const handleRemoveFromFriendsList = () => {
+  // Handle removing friend
+  const handleRemoveFromFriendsList = async () => {
     if (sharedGroups.length > 0) {
       setShowSharedGroupsModal(true);
       return;
     }
     
-    Alert.alert('Success', 'Friend removed successfully');
-    navigation.navigate('MainDashboard', {
-      screen: 'Friends',
-      refresh: true
-    });
+    try {
+      setActionLoading(true);
+      
+      // Get current user's phone number
+      const userQuery = query(collection(db, 'users'), where('email', '==', currentUser?.email));
+      const userSnapshot = await getDocs(userQuery);
+      
+      if (userSnapshot.empty) {
+        throw new Error('Your user account not found');
+      }
+      
+      const userData = userSnapshot.docs[0].data();
+      const userPhone = userData.phone;
+      
+      if (!userPhone) {
+        throw new Error('Your phone number not found');
+      }
+      
+      // Call FriendService to remove friend
+      await FriendService.removeFriend(userPhone, friendId);
+      
+      setActionLoading(false);
+      Alert.alert('Success', 'Friend removed successfully');
+      navigateToFriendsScreen('Friend removed successfully');
+    } catch (error) {
+      setActionLoading(false);
+      console.error('Error removing friend:', error);
+      Alert.alert('Error', (error as Error).message || 'Failed to remove friend');
+    }
   };
   
   const handleBlockUser = () => {
     setShowBlockConfirmModal(true);
   };
   
-  const confirmBlockUser = () => {
-    Alert.alert('Success', `${friendName} has been blocked`);
-    setShowBlockConfirmModal(false);
-    navigation.navigate('MainDashboard', {
-      screen: 'Friends',
-      refresh: true
-    });
+  const confirmBlockUser = async () => {
+    try {
+      setActionLoading(true);
+      
+      // Get current user's phone number
+      const userQuery = query(collection(db, 'users'), where('email', '==', currentUser?.email));
+      const userSnapshot = await getDocs(userQuery);
+      
+      if (userSnapshot.empty) {
+        throw new Error('Your user account not found');
+      }
+      
+      const userData = userSnapshot.docs[0].data();
+      const userPhone = userData.phone;
+      
+      if (!userPhone) {
+        throw new Error('Your phone number not found');
+      }
+      
+      // Call FriendService to block friend
+      await FriendService.blockFriend(userPhone, friendId);
+      
+      setActionLoading(false);
+      setShowBlockConfirmModal(false);
+      Alert.alert('Success', `${friendName} has been blocked`);
+      navigateToFriendsScreen('Friend blocked successfully');
+    } catch (error) {
+      setActionLoading(false);
+      console.error('Error blocking friend:', error);
+      Alert.alert('Error', (error as Error).message || 'Failed to block friend');
+      setShowBlockConfirmModal(false);
+    }
   };
   
   const handleReportAbuse = () => {
@@ -85,6 +224,20 @@ function FriendSettingsScreen({ route, navigation }: FriendSettingsScreenProps) 
     Alert.alert('Report Submitted', 'Thank you for your report. We will review it shortly.');
     setShowReportAbuseModal(false);
   };
+  
+  // Determine what contact info to display
+  const contactInfo = friendEmail || friendPhone || 'No contact info';
+  
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#0A6EFF" />
+          <Text style={styles.loadingText}>Loading friend information...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
   
   return (
     <SafeAreaView style={styles.container}>
@@ -104,7 +257,7 @@ function FriendSettingsScreen({ route, navigation }: FriendSettingsScreenProps) 
         </View>
         <View style={styles.profileInfo}>
           <Text style={styles.name}>{friendName}</Text>
-          <Text style={styles.email}>{email}</Text>
+          <Text style={styles.email}>{contactInfo}</Text>
         </View>
       </View>
       
@@ -114,11 +267,23 @@ function FriendSettingsScreen({ route, navigation }: FriendSettingsScreenProps) 
           <Text style={styles.actionText}>Manage relationship</Text>
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.action} onPress={handleRemoveFromFriendsList}>
-          <Text style={styles.actionText}>Remove from friends list</Text>
+        <TouchableOpacity 
+          style={styles.action} 
+          onPress={handleRemoveFromFriendsList}
+          disabled={actionLoading}
+        >
+          {actionLoading ? (
+            <ActivityIndicator size="small" color="#0A6EFF" />
+          ) : (
+            <Text style={styles.actionText}>Remove from friends list</Text>
+          )}
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.action} onPress={handleBlockUser}>
+        <TouchableOpacity 
+          style={styles.action} 
+          onPress={handleBlockUser}
+          disabled={actionLoading}
+        >
           <Text style={styles.actionText}>Block {friendName}</Text>
           <Text style={styles.actionSubtext}>
             Remove from friends list, hide any groups you share, and suppress future expenses/notifications.
@@ -134,7 +299,7 @@ function FriendSettingsScreen({ route, navigation }: FriendSettingsScreenProps) 
       {/* Shared Groups */}
       {sharedGroups.length > 0 && (
         <View style={styles.sharedSection}>
-          <Text style={styles.sectionTitle}>Shared</Text>
+          <Text style={styles.sectionTitle}>Shared Groups</Text>
           
           {sharedGroups.map((group) => (
             <TouchableOpacity 
@@ -142,7 +307,10 @@ function FriendSettingsScreen({ route, navigation }: FriendSettingsScreenProps) 
               style={styles.groupItem}
               onPress={() => {
                 // Navigate to group details/settings
-                navigation.navigate('GroupDashboardScreen', { groupId: group.id });
+                navigation.navigate('GroupDashboardScreen', { 
+                  groupId: group.id,
+                  groupName: group.name
+                });
               }}
             >
               <View style={styles.groupIcon}>
@@ -207,8 +375,13 @@ function FriendSettingsScreen({ route, navigation }: FriendSettingsScreenProps) 
               <TouchableOpacity
                 style={[styles.modalButton, styles.buttonConfirm]}
                 onPress={confirmBlockUser}
+                disabled={actionLoading}
               >
-                <Text style={styles.buttonTextBlock}>Block</Text>
+                {actionLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.buttonTextBlock}>Block</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -224,7 +397,7 @@ function FriendSettingsScreen({ route, navigation }: FriendSettingsScreenProps) 
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalText}>
-              This feature reports abuse or unwanted communication from {email}.
+              This feature reports abuse or unwanted communication from {contactInfo}.
               Would you like to report abuse from this user?
             </Text>
             <TouchableOpacity
@@ -255,6 +428,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#666'
   },
   header: {
     flexDirection: 'row',
@@ -343,7 +526,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 8,
-    backgroundColor: '#b71c1c',
+    backgroundColor: '#0A6EFF',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 16,

@@ -1,4 +1,4 @@
-// Updated AuthContext.tsx with improved biometric support
+// Updated AuthContext.tsx with improved user validation
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { 
   createUserWithEmailAndPassword, 
@@ -13,6 +13,7 @@ import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { auth, db } from '../services/firebaseConfig';
+import { checkUserExists } from '../services/registerUser';
 import { CommonActions } from '@react-navigation/native';
 
 interface AuthContextType {
@@ -344,6 +345,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const register = async (email: string, password: string, displayName: string, pin: string, phoneNumber?: string) => {
     try {
+      // First check if a user with this email or phone already exists
+      if (phoneNumber) {
+        const { exists, field } = await checkUserExists(email, phoneNumber);
+        if (exists) {
+          throw new Error(`A user with this ${field} already exists. Please use a different ${field}.`);
+        }
+      }
+      
       // Create the user with Firebase Authentication
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       

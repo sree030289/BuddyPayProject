@@ -1,4 +1,3 @@
-// Updated GroupSettingsScreen.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -42,6 +41,7 @@ const GroupSettingsScreen = ({ navigation, route }: GroupSettingsScreenProps) =>
   const { user } = useAuth(); // Get user from AuthContext
   
   const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState(false);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [simplifyDebts, setSimplifyDebts] = useState(false);
   const [defaultSplit, setDefaultSplit] = useState('equal');
@@ -216,6 +216,8 @@ const GroupSettingsScreen = ({ navigation, route }: GroupSettingsScreenProps) =>
   const toggleMemberAdminStatus = async () => {
     if (!selectedMember || !currentUserIsAdmin) return;
     
+    setProcessing(true);
+    
     try {
       const newAdminStatus = !selectedMember.isAdmin;
       await GroupService.makeUserAdmin(groupId, selectedMember.uid, newAdminStatus);
@@ -237,6 +239,8 @@ const GroupSettingsScreen = ({ navigation, route }: GroupSettingsScreenProps) =>
     } catch (error) {
       console.error('Error updating admin status:', error);
       Alert.alert('Error', 'Failed to update admin status');
+    } finally {
+      setProcessing(false);
     }
   };
   
@@ -255,6 +259,7 @@ const GroupSettingsScreen = ({ navigation, route }: GroupSettingsScreenProps) =>
           text: 'Remove',
           style: 'destructive',
           onPress: async () => {
+            setProcessing(true);
             try {
               // Check if member has outstanding balances
               const hasBalances = await GroupService.hasOutstandingBalances(
@@ -267,6 +272,7 @@ const GroupSettingsScreen = ({ navigation, route }: GroupSettingsScreenProps) =>
                   'Cannot Remove Member',
                   'This member has outstanding balances. They need to settle up before they can be removed.'
                 );
+                setProcessing(false);
                 return;
               }
               
@@ -287,6 +293,8 @@ const GroupSettingsScreen = ({ navigation, route }: GroupSettingsScreenProps) =>
                 'Error', 
                 error instanceof Error ? error.message : 'Failed to remove member'
               );
+            } finally {
+              setProcessing(false);
             }
           }
         }
@@ -302,8 +310,12 @@ const GroupSettingsScreen = ({ navigation, route }: GroupSettingsScreenProps) =>
     }
     
     // First check if the user has outstanding balances
+    setProcessing(true);
+    
     GroupService.hasOutstandingBalances(groupId, user.uid)
       .then(hasBalances => {
+        setProcessing(false);
+        
         if (hasBalances) {
           Alert.alert(
             'Cannot Leave Group',
@@ -345,6 +357,7 @@ const GroupSettingsScreen = ({ navigation, route }: GroupSettingsScreenProps) =>
               text: 'Leave',
               style: 'destructive',
               onPress: async () => {
+                setProcessing(true);
                 try {
                   await GroupService.removeMemberFromGroup(groupId, user.uid);
                   
@@ -356,7 +369,12 @@ const GroupSettingsScreen = ({ navigation, route }: GroupSettingsScreenProps) =>
                         text: 'OK',
                         onPress: () => {
                           // Navigate back to groups screen
-                          navigation.navigate('MainDashboard', { screen: 'Groups' });
+                          navigation.navigate('MainDashboard' as never, { 
+                            screen: 'Groups',
+                            params: {
+                              refresh: true
+                            }
+                          } as never);
                         }
                       }
                     ]
@@ -364,6 +382,8 @@ const GroupSettingsScreen = ({ navigation, route }: GroupSettingsScreenProps) =>
                 } catch (error) {
                   console.error('Error leaving group:', error);
                   Alert.alert('Error', 'Failed to leave the group');
+                } finally {
+                  setProcessing(false);
                 }
               }
             }
@@ -371,63 +391,103 @@ const GroupSettingsScreen = ({ navigation, route }: GroupSettingsScreenProps) =>
         );
       })
       .catch(error => {
+        setProcessing(false);
         console.error('Error checking balances:', error);
         Alert.alert('Error', 'Failed to check your balances');
       });
   };
 
   const handleDeleteGroup = () => {
-    // Verify user is authenticated
+    // Verify user is authenticated and is an admin
     if (!user) {
       Alert.alert('Authentication Error', 'You must be logged in to delete the group');
       return;
     }
     
-    Alert.alert(
-      'Delete Group',
-      `Are you sure you want to permanently delete the "${groupName}" group? This action cannot be undone.`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel'
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // Check if user is admin
-              if (!currentUserIsAdmin) {
-                Alert.alert('Error', 'Only group administrators can delete the group');
-                return;
-              }
-              
-              setLoading(true);
-                  await GroupService.deleteGroup(groupId);
-              setLoading(false);
-              
-              Alert.alert(
-                'Group Deleted',
-                'The group has been permanently deleted.',
-                [
-                  {
-                    text: 'OK',
-                    onPress: () => {
-                      // Navigate back to groups screen
-                      navigation.navigate('MainDashboard', { screen: 'Groups' });
-                    }
-                  }
-                ]
-              );
-            } catch (error) {
-              setLoading(false);
-              console.error('Error deleting group:', error);
-              Alert.alert('Error', 'Failed to delete the group');
-            }
-          }
+    if (!currentUserIsAdmin) {
+      Alert.alert('Permission Denied', 'Only group administrators can delete the group');
+      return;
+    }
+    
+    // Check for unsettled balances in any member
+    setProcessing(true);
+    
+    // Helper function to check if any member has outstanding balances
+    const checkAllMembersBalances = async (): Promise<boolean> => {
+      let hasUnsettledBalances = false;
+      
+      for (const member of members) {
+        if (Math.abs(member.balance || 0) > 0) {
+          hasUnsettledBalances = true;
+          break;
         }
-      ]
-    );
+      }
+      
+      return hasUnsettledBalances;
+    };
+    
+    checkAllMembersBalances()
+      .then(hasUnsettledBalances => {
+        setProcessing(false);
+        
+        if (hasUnsettledBalances) {
+          Alert.alert(
+            'Cannot Delete Group',
+            'This group has unsettled balances. All members must settle up before the group can be deleted.'
+          );
+          return;
+        }
+        
+        Alert.alert(
+          'Delete Group',
+          `Are you sure you want to permanently delete the "${groupName}" group? This action cannot be undone.`,
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel'
+            },
+            {
+              text: 'Delete',
+              style: 'destructive',
+              onPress: async () => {
+                setProcessing(true);
+                try {
+                  await GroupService.deleteGroup(groupId);
+                  
+                  Alert.alert(
+                    'Group Deleted',
+                    'The group has been permanently deleted.',
+                    [
+                      {
+                        text: 'OK',
+                        onPress: () => {
+                          // Navigate back to groups screen
+                          navigation.navigate('MainDashboard' as never, { 
+                            screen: 'Groups',
+                            params: {
+                              refresh: true
+                            }
+                          } as never);
+                        }
+                      }
+                    ]
+                  );
+                } catch (error) {
+                  console.error('Error deleting group:', error);
+                  Alert.alert('Error', 'Failed to delete the group');
+                } finally {
+                  setProcessing(false);
+                }
+              }
+            }
+          ]
+        );
+      })
+      .catch(error => {
+        setProcessing(false);
+        console.error('Error checking balances:', error);
+        Alert.alert('Error', 'Failed to check group balances');
+      });
   };
 
   const getColorFromName = (name: string) => {
@@ -463,6 +523,11 @@ const GroupSettingsScreen = ({ navigation, route }: GroupSettingsScreenProps) =>
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#0A6EFF" />
             <Text style={styles.loadingText}>Loading group settings...</Text>
+          </View>
+        ) : processing ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#0A6EFF" />
+            <Text style={styles.loadingText}>Processing request...</Text>
           </View>
         ) : error ? (
           <View style={styles.errorContainer}>

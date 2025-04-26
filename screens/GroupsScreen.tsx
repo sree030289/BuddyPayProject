@@ -170,10 +170,10 @@ const GroupsScreen = ({ navigation, route }: GroupsScreenProps) => {
   return (
     <SafeAreaView style={{flex: 1, backgroundColor: '#fff'}}>
       <View style={styles.screenContainer}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Groups</Text>
-          <TouchableOpacity style={styles.filterButton}>
-            <Icon name="filter" size={22} color="#333" />
+        <View style={styles.topBar}>
+          <Text style={styles.topBarTitle}>Groups</Text>
+          <TouchableOpacity onPress={() => {}} style={styles.filterButton}>
+            <Icon name="filter" size={24} color="#fff" />
           </TouchableOpacity>
         </View>
 
@@ -256,11 +256,26 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 20 : 10,
     paddingHorizontal: 20,
-    backgroundColor: '#fff'
+    backgroundColor: '#fff',
+    paddingBottom: 80 // Add space for tab bar
   },
   centerContainer: {
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#0A6EFF',
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 20
+  },
+  topBarTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold'
   },
   header: {
     flexDirection: 'row',
@@ -275,9 +290,7 @@ const styles = StyleSheet.create({
     color: '#333'
   },
   filterButton: {
-    padding: 8,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 20
+    padding: 8
   },
   headerActions: {
     marginBottom: 20,

@@ -1,14 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, SafeAreaView, ActivityIndicator } from 'react-native';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
-import { useAuth } from '../components/AuthContext'; // Import useAuth hook
+import { useAuth } from '../components/AuthContext';
 
 const AccountScreen = ({ route }: any) => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { user, isLoading, logout } = useAuth(); // Use the auth context with logout method
+  
+  // Get the user's name with fallbacks for different properties
+  const getUserName = () => {
+    // First priority: user.name
+    if (user?.name) return user.name;
+    
+    // Second priority: user.displayName
+    if (user?.displayName) return user.displayName;
+    
+    // Third priority: use first part of email if available
+    if (user?.email) {
+      const emailName = user.email.split('@')[0];
+      // Capitalize first letter
+      return emailName.charAt(0).toUpperCase() + emailName.slice(1);
+    }
+    
+    // Final fallback
+    return 'User';
+  };
+  
+  const userName = getUserName();
   
   const handleLogout = async () => {
     Alert.alert(
@@ -62,10 +83,10 @@ const AccountScreen = ({ route }: any) => {
 
         <View style={styles.profileSection}>
           <View style={styles.avatarContainer}>
-            <Text style={styles.avatarText}>{user?.name?.[0] || user?.email?.[0] || 'U'}</Text>
+            <Text style={styles.avatarText}>{userName.charAt(0).toUpperCase()}</Text>
           </View>
-          <Text style={styles.userName}>{user?.name || user?.displayName || 'User'}</Text>
-          <Text style={styles.userEmail}>{user?.email || 'user@example.com'}</Text>
+          <Text style={styles.userName}>{userName}</Text>
+          <Text style={styles.userEmail}>{user?.email || 'No email available'}</Text>
         </View>
 
         <View style={styles.optionsContainer}>
@@ -165,5 +186,4 @@ const styles = StyleSheet.create({
     fontSize: 12
   }
 });
-
 export default AccountScreen;

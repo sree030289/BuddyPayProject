@@ -244,14 +244,7 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
             friendName: item.name,
             totalOwed: item.totalAmount || 1495, // fallback if not present
             groups: item.groups || [
-              {
-                id: '1',
-                name: 'Goa Trip',
-                image: 'https://placehold.co/40x40',
-                amount: 2000,
-                balanceType: 'You owe',
-                date: '21 Apr 2024'
-              }
+              
             ],
             email: user?.email || undefined
           });
