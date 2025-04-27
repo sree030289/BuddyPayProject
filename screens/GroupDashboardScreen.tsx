@@ -645,9 +645,13 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
       </View>
       
       {/* Floating Action Button */}
+      // In GroupDashboardScreen.tsx
       <TouchableOpacity 
         style={styles.floatingActionButton}
-        onPress={handleAddExpense}
+        onPress={() => navigation.navigate('AddExpenseScreen', {
+          groupId: groupId,
+          groupName: groupName
+        })}
       >
         <Icon name="add" size={30} color="#fff" />
       </TouchableOpacity>

@@ -141,4 +141,10 @@ export type RootStackParamList = {
     Account: {
         insideTabNavigator?: boolean;
     };
+    AddExpenseScreen: {
+        groupId?: string;
+        groupName?: string;
+        friendId?: string;
+        friendName?: string;
+      };
   };

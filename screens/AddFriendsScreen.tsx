@@ -14,12 +14,11 @@ import {
   Share
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Picker } from '@react-native-picker/picker';
 import * as Contacts from 'expo-contacts';
-import { useAuth } from '../components/AuthContext';
-import { useNavigation, CommonActions, NavigationProp, RouteProp } from '@react-navigation/native';
-import { collection, getDocs, query, where, doc, getDoc, addDoc } from 'firebase/firestore';
+import { useNavigation, CommonActions, NavigationProp } from '@react-navigation/native';
+import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import { db } from '../services/firebaseConfig';
+import { useAuth } from '../components/AuthContext';
 import FriendService from '../services/FriendService';
 
 // Define app navigation types
@@ -50,6 +49,12 @@ interface Contact {
   selected?: boolean;
 }
 
+// Country code interface
+interface CountryCode {
+  code: string;
+  name: string;
+}
+
 const AddFriendsScreen = () => {
   const { user } = useAuth();
   const navigation = useNavigation<AppNavigationProp>();
@@ -74,9 +79,10 @@ const AddFriendsScreen = () => {
   const [smsRecipient, setSmsRecipient] = useState('');
   const [smsMessage, setSmsMessage] = useState('');
   const [userPhone, setUserPhone] = useState<string | null>(null);
+  const [showCountryCodeModal, setShowCountryCodeModal] = useState(false);
   
-  // Country codes with flags
-  const countryCodes = [
+  // Country codes with flags - FIXED: Simplified and formatted for better display
+  const countryCodes: CountryCode[] = [
     { code: '+91', name: 'India 🇮🇳' },
     { code: '+1', name: 'USA/Canada 🇺🇸/🇨🇦' },
     { code: '+44', name: 'UK 🇬🇧' },
@@ -92,6 +98,12 @@ const AddFriendsScreen = () => {
     { code: '+55', name: 'Brazil 🇧🇷' },
     { code: '+52', name: 'Mexico 🇲🇽' },
   ];
+
+  // Find selected country name
+  const getSelectedCountryName = () => {
+    const selected = countryCodes.find(item => item.code === countryCode);
+    return selected ? selected.name : countryCode;
+  };
 
   // Fetch user phone number on component mount
   useEffect(() => {
@@ -392,6 +404,22 @@ const AddFriendsScreen = () => {
     );
   };
 
+  // Render country code item
+  const renderCountryCodeItem = ({ item }: { item: CountryCode }) => (
+    <TouchableOpacity 
+      style={styles.countryCodeItem}
+      onPress={() => {
+        setCountryCode(item.code);
+        setShowCountryCodeModal(false);
+      }}
+    >
+      <Text style={styles.countryCodeItemText}>{item.name}</Text>
+      {countryCode === item.code && (
+        <Ionicons name="checkmark" size={20} color="#0A6EFF" />
+      )}
+    </TouchableOpacity>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -474,17 +502,14 @@ const AddFriendsScreen = () => {
 
             <Text style={styles.label}>Phone Number</Text>
             <View style={styles.phoneContainer}>
-              <View style={styles.countryCodeContainer}>
-                <Picker
-                  selectedValue={countryCode}
-                  onValueChange={(itemValue) => setCountryCode(itemValue)}
-                  style={styles.countryCodePicker}
-                >
-                  {countryCodes.map(item => (
-                    <Picker.Item key={item.code} label={item.name} value={item.code} />
-                  ))}
-                </Picker>
-              </View>
+              {/* FIXED: Country code selector now uses a modal instead of picker */}
+              <TouchableOpacity 
+                style={styles.countryCodeContainer}
+                onPress={() => setShowCountryCodeModal(true)}
+              >
+                <Text style={styles.countryCodeText}>{countryCode}</Text>
+                <Ionicons name="chevron-down" size={16} color="#999" />
+              </TouchableOpacity>
               <View style={styles.phoneInputContainer}>
                 <Ionicons name="call-outline" size={20} color="#999" style={styles.inputIcon} />
                 <TextInput
@@ -629,6 +654,31 @@ const AddFriendsScreen = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Country Code Modal - ADDED */}
+      <Modal
+        visible={showCountryCodeModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowCountryCodeModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.countryCodeModal}>
+            <View style={styles.countryCodeModalHeader}>
+              <Text style={styles.countryCodeModalTitle}>Select Country Code</Text>
+              <TouchableOpacity onPress={() => setShowCountryCodeModal(false)}>
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={countryCodes}
+              renderItem={renderCountryCodeItem}
+              keyExtractor={(item) => item.code}
+              contentContainerStyle={styles.countryCodeList}
+            />
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -702,9 +752,6 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16
   },
-  form: {
-    flex: 1
-  },
   label: {
     fontSize: 14,
     fontWeight: '500',
@@ -733,18 +780,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20
   },
+  // FIXED: Updated countryCodeContainer to work with TouchableOpacity
   countryCodeContainer: {
-    width: '38%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: 100,
     borderWidth: 1,
     borderColor: '#ddd',
     borderRadius: 10,
     marginRight: 10,
     height: 50,
-    justifyContent: 'center'
+    paddingHorizontal: 12
   },
-  countryCodePicker: {
-    height: 50,
-    width: '100%'
+  countryCodeText: {
+    fontSize: 16,
+    color: '#333'
   },
   phoneInputContainer: {
     flex: 1,
@@ -937,6 +988,46 @@ const styles = StyleSheet.create({
   skipButtonText: {
     color: '#666',
     fontSize: 14
+  },
+  // Country Code Modal Styles - ADDED
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end'
+  },
+  countryCodeModal: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '70%'
+  },
+  countryCodeModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee'
+  },
+  countryCodeModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333'
+  },
+  countryCodeList: {
+    paddingBottom: 20
+  },
+  countryCodeItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee'
+  },
+  countryCodeItemText: {
+    fontSize: 16,
+    color: '#333'
   }
 });
 

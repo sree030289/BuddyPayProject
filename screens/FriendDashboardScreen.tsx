@@ -148,7 +148,13 @@ const FriendDashboardScreen = () => {
         </ScrollView>
       </View>
 
+
       {/* Transactions list with group icons */}
+      <TouchableOpacity 
+  style={styles.floatingActionButton}
+  onPress={() => navigation.navigate('AddExpenseScreen')}>
+  <Icon name="add" size={30} color="#fff" />
+</TouchableOpacity>
       <View style={styles.transactionsContainer}>
         <Text style={styles.sectionHeader}>Shared Groups</Text>
         
@@ -367,6 +373,23 @@ const styles = StyleSheet.create({
     color: '#9E9E9E',
     textAlign: 'center',
     paddingHorizontal: 20
+  },
+  // Floating action button
+  floatingActionButton: {
+    position: 'absolute',
+    right: 20,
+    bottom: 80,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#0A6EFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.16,
+    shadowRadius: 6,
+    elevation: 6
   }
 });
 

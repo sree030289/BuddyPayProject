@@ -46,6 +46,14 @@ const SharedTabBar: React.FC<SharedTabBarProps> = ({ activeTab }) => {
         </Text>
       </TouchableOpacity>
 
+      <View style={styles.centerButtonContainer}>
+  <TouchableOpacity 
+    style={styles.centerButton}
+    onPress={() => navigation.navigate('AddExpenseScreen')}
+  >
+    <Icon name="add" size={24} color="#fff" />
+  </TouchableOpacity>
+</View>
       <TouchableOpacity
         style={[styles.tabItem, activeTab === 'Activity' && styles.activeTabItem]}
         onPress={() => navigateTo('Activity')}
@@ -117,6 +125,25 @@ const styles = StyleSheet.create({
     color: '#0A6EFF',
     fontWeight: 'bold',
   },
+  centerButtonContainer: {
+    position: 'absolute',
+    alignItems: 'center',
+    top: -30, // Adjust as needed to position above the tab bar
+    width: '100%'
+  },
+  centerButton: {
+    backgroundColor: '#0A6EFF',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 5
+  }
 });
 
 export default SharedTabBar;

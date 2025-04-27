@@ -1,4 +1,3 @@
-// Improved RegistrationScreen.tsx with better keyboard handling and form navigation
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
@@ -16,7 +15,10 @@ import {
   Switch,
   Modal,
   Keyboard,
-  TouchableWithoutFeedback
+  TouchableWithoutFeedback,
+  Image,
+  Dimensions,
+  Animated
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -24,6 +26,7 @@ import { RootStackParamList } from '../types';
 import { useAuth } from '../components/AuthContext';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
+import { LinearGradient } from 'expo-linear-gradient';
 
 type RegistrationScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'RegistrationScreen'>;
 
@@ -54,10 +57,17 @@ const popularCountryCodes: CountryCode[] = [
   { name: 'New Zealand', code: 'NZ', dial_code: '+64' },
 ];
 
+const { width, height } = Dimensions.get('window');
+
 const RegistrationScreen = () => {
   const navigation = useNavigation<RegistrationScreenNavigationProp>();
   const { register } = useAuth();
   const scrollViewRef = useRef<ScrollView>(null);
+  
+  // Animation values
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  const [currentStep, setCurrentStep] = useState(1);
   
   // Form state
   const [name, setName] = useState('');
@@ -71,7 +81,7 @@ const RegistrationScreen = () => {
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   
   // Country code selector
-  const [selectedCountry, setSelectedCountry] = useState<CountryCode>(popularCountryCodes[0]); // Default to Australia
+  const [selectedCountry, setSelectedCountry] = useState<CountryCode>(popularCountryCodes[0]);
   const [showCountrySelector, setShowCountrySelector] = useState(false);
   
   // Biometric authentication state
@@ -91,6 +101,22 @@ const RegistrationScreen = () => {
     useRef<TextInput>(null),
     useRef<TextInput>(null)
   ];
+  
+  // Run entry animations
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 800,
+        useNativeDriver: true,
+      })
+    ]).start();
+  }, []);
   
   // Monitor keyboard visibility
   useEffect(() => {
@@ -162,70 +188,51 @@ const RegistrationScreen = () => {
     }
     
     // Validate email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!email.trim()) {
       newErrors.email = 'Email is required';
-    } else if (!/\S+@\S+\.\S+/.test(email)) {
-      newErrors.email = 'Email address is invalid';
+    } else if (!emailRegex.test(email)) {
+      newErrors.email = 'Please enter a valid email';
     }
     
-    // Validate phone
-    if (!phoneNumber.trim()) {
-      newErrors.phone = 'Phone number is required';
-    } else if (!/^\d{7,12}$/.test(phoneNumber.replace(/[^0-9]/g, ''))) {
+    // Validate phone number (optional)
+    if (phoneNumber && phoneNumber.length < 6) {
       newErrors.phone = 'Please enter a valid phone number';
     }
     
     // Validate password
     if (!password) {
       newErrors.password = 'Password is required';
-    } else if (password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters';
+    } else if (password.length < 6) {
+      newErrors.password = 'Password must be at least 6 characters';
     }
     
     // Validate PIN
     const fullPin = pin.join('');
-    if (!fullPin || fullPin.length !== 4) {
+    if (fullPin.length !== 4) {
       newErrors.pin = 'Please enter a 4-digit PIN';
     }
     
     setErrors(newErrors);
-    
-    // If there are errors, scroll to the first error
-    if (Object.keys(newErrors).length > 0) {
-      let scrollPosition = 0;
-      
-      if (newErrors.name) scrollPosition = 0;
-      else if (newErrors.email) scrollPosition = 100;
-      else if (newErrors.phone) scrollPosition = 200;
-      else if (newErrors.password) scrollPosition = 300;
-      else if (newErrors.pin) scrollPosition = 400;
-      
-      // Scroll to the error with a slight delay to ensure the keyboard is visible
-      setTimeout(() => {
-        scrollViewRef.current?.scrollTo({ y: scrollPosition, animated: true });
-      }, 100);
-    }
-    
     return Object.keys(newErrors).length === 0;
   };
   
   // Handle PIN input
-  const handlePinChange = (text: string, index: number) => {
-    if (text.length <= 1) {
+  const handlePinChange = (value: string, index: number) => {
+    if (value.length <= 1) {
       const newPin = [...pin];
-      newPin[index] = text.replace(/[^0-9]/g, '');
+      newPin[index] = value;
       setPin(newPin);
       
-      // Auto-advance to next input if this one is filled
-      if (text && index < 3) {
+      // Auto-focus next input
+      if (value !== '' && index < 3) {
         pinInputRefs[index + 1].current?.focus();
       }
     }
   };
   
-  // Handle PIN input keypress
+  // Handle PIN key press for backspace navigation
   const handlePinKeyPress = (event: any, index: number) => {
-    // If backspace and empty, go to previous field
     if (event.nativeEvent.key === 'Backspace' && !pin[index] && index > 0) {
       pinInputRefs[index - 1].current?.focus();
     }
@@ -271,569 +278,589 @@ const RegistrationScreen = () => {
       setBiometricsEnabled(false);
       Alert.alert(
         'Error',
-        `Failed to verify ${biometricType}. Biometric login has been disabled.`,
+        'An error occurred during biometric verification.',
         [{ text: 'OK' }]
       );
     }
   };
   
-  // Toggle biometrics
-  const toggleBiometrics = (value: boolean) => {
-    setBiometricsEnabled(value);
-    
-    if (value) {
-      // If enabled, test biometrics
-      testBiometricAuth();
-    } else {
-      // If disabled, reset tested state
-      setBiometricTested(false);
-    }
-  };
-  
-  // Get full phone number with country code
-  const getFullPhoneNumber = () => {
-    const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
-    return `${selectedCountry.dial_code}${cleanNumber}`;
+  // Navigate to login screen
+  const goToLogin = () => {
+    navigation.navigate('LoginScreen');
   };
   
   // Handle registration
   const handleRegister = async () => {
-    // Dismiss keyboard first
-    Keyboard.dismiss();
-    
     if (!validateForm()) {
-      return;
-    }
-    
-    // Check if biometrics is enabled but not tested
-    if (biometricsEnabled && !biometricTested) {
-      Alert.alert(
-        'Biometric Verification Required',
-        `Please verify your ${biometricType} before continuing.`,
-        [
-          { 
-            text: 'Verify',
-            onPress: testBiometricAuth
-          },
-          {
-            text: 'Disable Biometrics',
-            onPress: () => {
-              setBiometricsEnabled(false);
-              setBiometricTested(false);
-            }
-          }
-        ]
-      );
+      // Scroll to first error
+      if (errors.name) {
+        nameInputRef.current?.focus();
+      } else if (errors.email) {
+        emailInputRef.current?.focus();
+      } else if (errors.phone) {
+        phoneInputRef.current?.focus();
+      } else if (errors.password) {
+        passwordInputRef.current?.focus();
+      } else if (errors.pin) {
+        pinInputRefs[0].current?.focus();
+      }
       return;
     }
     
     setProcessing(true);
     
     try {
-      // Combine PIN digits
-      const pinCode = pin.join('');
+      // Combine country code and phone number
+      const fullPhoneNumber = phoneNumber ? `${selectedCountry.dial_code}${phoneNumber}` : undefined;
+      const fullPin = pin.join('');
       
-      // Get full phone number with country code
-      const formattedPhone = getFullPhoneNumber();
+      await register(email, password, name, fullPin, fullPhoneNumber);
       
-      // Register the user with Firebase Authentication and Firestore
-      await register(email, password, name, pinCode, formattedPhone);
-      
-      // Show success message
-      Alert.alert(
-        'Account Created!',
-        'Your BuddyPay account has been created successfully.',
-        [
-          {
-            text: 'Get Started',
-            onPress: () => {
-              // Navigate to dashboard
-              navigation.replace('MainDashboard', { screen: 'Friends' });
-            },
-          },
-        ],
-        { cancelable: false }
-      );
-    } catch (error) {
-      console.error('Registration error:', error);
-      
-      // Show appropriate error message
-      if (error instanceof Error) {
-        if (error.message.includes('A user with this email already exists')) {
-          setErrors({
-            ...errors,
-            email: 'This email is already registered',
-          });
-          emailInputRef.current?.focus();
-          // Scroll to email field
-          scrollViewRef.current?.scrollTo({ y: 100, animated: true });
-        } 
-        else if (error.message.includes('A user with this phone already exists')) {
-          setErrors({
-            ...errors,
-            phone: 'This phone number is already registered',
-          });
-          phoneInputRef.current?.focus();
-          // Scroll to phone field
-          scrollViewRef.current?.scrollTo({ y: 200, animated: true });
-        }
-        else if (error.message.includes('auth/email-already-in-use')) {
-          setErrors({
-            ...errors,
-            email: 'This email is already registered',
-          });
-          emailInputRef.current?.focus();
-          // Scroll to email field
-          scrollViewRef.current?.scrollTo({ y: 100, animated: true });
-        } else if (error.message.includes('auth/invalid-email')) {
-          setErrors({
-            ...errors,
-            email: 'Invalid email address',
-          });
-          emailInputRef.current?.focus();
-          // Scroll to email field
-          scrollViewRef.current?.scrollTo({ y: 100, animated: true });
-        } else if (error.message.includes('auth/weak-password')) {
-          setErrors({
-            ...errors,
-            password: 'Password is too weak',
-          });
-          passwordInputRef.current?.focus();
-          // Scroll to password field
-          scrollViewRef.current?.scrollTo({ y: 300, animated: true });
-        } else {
-          Alert.alert(
-            'Registration Failed',
-            'An error occurred during registration. Please try again.',
-            [{ text: 'OK' }]
-          );
-        }
-      } else {
-        Alert.alert(
-          'Registration Failed',
-          'An unexpected error occurred. Please try again later.',
-          [{ text: 'OK' }]
-        );
+      if (biometricsEnabled && !biometricTested) {
+        // If biometrics is enabled but not tested, show prompt
+        testBiometricAuth();
       }
+      
+      // Registration successful
+      navigation.replace('MainDashboard', { screen: 'Friends' });
+    } catch (error: any) {
+      let errorMessage = 'Failed to register. Please try again.';
+      
+      if (typeof error === 'object' && error !== null && 'message' in error) {
+        errorMessage = error.message.toString();
+      }
+      
+      Alert.alert('Registration Error', errorMessage);
     } finally {
       setProcessing(false);
     }
   };
   
-  // Go back to login
-  const goToLogin = () => {
-    navigation.navigate('PINEntryScreen');
+  // Go to next step
+  const nextStep = () => {
+    if (currentStep === 1) {
+      // Validate first step fields
+      const stepErrors: FormErrors = {};
+      
+      if (!name.trim()) {
+        stepErrors.name = 'Name is required';
+      }
+      
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!email.trim()) {
+        stepErrors.email = 'Email is required';
+      } else if (!emailRegex.test(email)) {
+        stepErrors.email = 'Please enter a valid email';
+      }
+      
+      if (phoneNumber && phoneNumber.length < 6) {
+        stepErrors.phone = 'Please enter a valid phone number';
+      }
+      
+      setErrors(stepErrors);
+      if (Object.keys(stepErrors).length === 0) {
+        setCurrentStep(2);
+        if (scrollViewRef.current) {
+          scrollViewRef.current.scrollTo({ y: 0, animated: true });
+        }
+      }
+    }
   };
   
-  // Handle return key on inputs - move to next field
-  const handleSubmitEditing = (nextField: React.RefObject<TextInput>) => {
-    nextField.current?.focus();
+  // Go back to previous step
+  const prevStep = () => {
+    if (currentStep === 2) {
+      setCurrentStep(1);
+    }
   };
   
-  // Function to dismiss keyboard when tapping outside of inputs
-  const dismissKeyboard = () => {
-    Keyboard.dismiss();
+  // Render country selector modal
+  const renderCountrySelector = () => {
+    return (
+      <Modal
+        visible={showCountrySelector}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowCountrySelector(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.countryModalContainer}>
+            <View style={styles.countryModalHeader}>
+              <Text style={styles.countryModalTitle}>Select Country</Text>
+              <TouchableOpacity onPress={() => setShowCountrySelector(false)}>
+                <Icon name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.countryList}>
+              {popularCountryCodes.map((country) => (
+                <TouchableOpacity
+                  key={country.code}
+                  style={styles.countryItem}
+                  onPress={() => {
+                    setSelectedCountry(country);
+                    setShowCountrySelector(false);
+                  }}
+                >
+                  <Text style={styles.countryName}>{country.name}</Text>
+                  <Text style={styles.countryDialCode}>{country.dial_code}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    );
   };
   
+  // Render step 1 (personal info)
+  const renderStepOne = () => {
+    return (
+      <Animated.View 
+        style={[
+          styles.formContainer,
+          { 
+            opacity: fadeAnim,
+            transform: [{ translateY: slideAnim }] 
+          }
+        ]}
+      >
+        <Text style={styles.stepTitle}>Personal Information</Text>
+        
+        {/* Name Input */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Full Name</Text>
+          <View style={[styles.inputContainer, errors.name ? styles.inputError : null]}>
+            <Icon name="person-outline" size={20} color="#666" style={styles.inputIcon} />
+            <TextInput
+              ref={nameInputRef}
+              style={styles.input}
+              placeholder="Enter your full name"
+              value={name}
+              onChangeText={setName}
+              autoCapitalize="words"
+              returnKeyType="next"
+              onSubmitEditing={() => emailInputRef.current?.focus()}
+              blurOnSubmit={false}
+            />
+          </View>
+          {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
+        </View>
+        
+        {/* Email Input */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Email Address</Text>
+          <View style={[styles.inputContainer, errors.email ? styles.inputError : null]}>
+            <Icon name="mail-outline" size={20} color="#666" style={styles.inputIcon} />
+            <TextInput
+              ref={emailInputRef}
+              style={styles.input}
+              placeholder="Enter your email address"
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              returnKeyType="next"
+              onSubmitEditing={() => phoneInputRef.current?.focus()}
+              blurOnSubmit={false}
+            />
+          </View>
+          {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
+        </View>
+        
+        {/* Phone Input */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Phone Number (Optional)</Text>
+          <View style={[styles.phoneContainer, errors.phone ? styles.inputError : null]}>
+            <TouchableOpacity 
+              style={styles.countryCodeButton}
+              onPress={() => setShowCountrySelector(true)}
+            >
+              <Text style={styles.countryCodeText}>{selectedCountry.dial_code}</Text>
+              <Icon name="chevron-down" size={16} color="#666" />
+            </TouchableOpacity>
+            
+            <TextInput
+              ref={phoneInputRef}
+              style={styles.phoneInput}
+              placeholder="Enter phone number"
+              value={phoneNumber}
+              onChangeText={setPhoneNumber}
+              keyboardType="phone-pad"
+              returnKeyType="done"
+              onSubmitEditing={nextStep}
+            />
+          </View>
+          {errors.phone && <Text style={styles.errorText}>{errors.phone}</Text>}
+        </View>
+      </Animated.View>
+    );
+  };
+  
+  // Render step 2 (security info)
+  const renderStepTwo = () => {
+    return (
+      <Animated.View 
+        style={[
+          styles.formContainer,
+          { 
+            opacity: fadeAnim,
+            transform: [{ translateY: slideAnim }] 
+          }
+        ]}
+      >
+        <Text style={styles.stepTitle}>Security Details</Text>
+        
+        {/* Password Input */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Password</Text>
+          <View style={[styles.inputContainer, errors.password ? styles.inputError : null]}>
+            <Icon name="lock-closed-outline" size={20} color="#666" style={styles.inputIcon} />
+            <TextInput
+              ref={passwordInputRef}
+              style={styles.input}
+              placeholder="Create a password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              returnKeyType="next"
+            />
+            <TouchableOpacity 
+              style={styles.visibilityToggle}
+              onPress={() => setShowPassword(!showPassword)}
+            >
+              <Icon name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color="#666" />
+            </TouchableOpacity>
+          </View>
+          {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+          <Text style={styles.passwordTip}>Password must be at least 6 characters</Text>
+        </View>
+        
+        {/* PIN Input */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>4-Digit PIN</Text>
+          <View style={styles.pinInputContainer}>
+            {pin.map((digit, index) => (
+              <View 
+                key={index} 
+                style={[styles.pinDigitContainer, errors.pin ? styles.inputError : null]}
+              >
+                <TextInput
+                  ref={pinInputRefs[index]}
+                  style={styles.pinDigit}
+                  value={digit}
+                  onChangeText={(value) => handlePinChange(value, index)}
+                  onKeyPress={(e) => handlePinKeyPress(e, index)}
+                  keyboardType="numeric"
+                  maxLength={1}
+                  secureTextEntry
+                />
+              </View>
+            ))}
+          </View>
+          {errors.pin && <Text style={styles.errorText}>{errors.pin}</Text>}
+          <Text style={styles.passwordTip}>You'll use this PIN to log in to the app</Text>
+        </View>
+        
+        {/* Biometric Authentication */}
+        {isBiometricsAvailable && (
+          <View style={styles.biometricSection}>
+            <View style={styles.biometricIcon}>
+              <Icon 
+                name={biometricType === 'Face ID' ? "scan-outline" : "finger-print-outline"} 
+                size={24} 
+                color="#0055A4" 
+              />
+            </View>
+            <View style={styles.biometricTextContainer}>
+              <Text style={styles.biometricTitle}>Enable {biometricType}</Text>
+              <Text style={styles.biometricSubtitle}>
+                Use {biometricType} to log in quickly and securely
+              </Text>
+            </View>
+            <Switch
+              value={biometricsEnabled}
+              onValueChange={(value) => {
+                setBiometricsEnabled(value);
+                if (value && !biometricTested) {
+                  // Test biometrics when enabled
+                  testBiometricAuth();
+                }
+              }}
+              trackColor={{ false: '#e0e0e0', true: '#bfd7ff' }}
+              thumbColor={biometricsEnabled ? '#0055A4' : '#f4f3f4'}
+            />
+          </View>
+        )}
+      </Animated.View>
+    );
+  };
+
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" />
-      <TouchableWithoutFeedback onPress={dismissKeyboard}>
-        <KeyboardAvoidingView
-          style={styles.container}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
-        >
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+      
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardAvoidView}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <ScrollView
             ref={scrollViewRef}
             contentContainerStyle={styles.scrollContent}
-            keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {/* Logo Section */}
-            <View style={styles.logoSection}>
+            {/* Header */}
+            <View style={styles.headerContainer}>
+              <TouchableOpacity 
+                style={styles.backButton}
+                onPress={currentStep === 1 ? goToLogin : prevStep}
+              >
+                <Icon name="arrow-back" size={24} color="#333" />
+              </TouchableOpacity>
+              
               <View style={styles.logoContainer}>
-                <Icon name="cash-outline" size={40} color="#FFFFFF" />
+                <LinearGradient
+                  colors={['#0A2E64', '#0055A4', '#0A78DD']}
+                  style={styles.logoBackground}
+                >
+                  <Text style={styles.logoText}>BP</Text>
+                </LinearGradient>
+                <Text style={styles.appName}>BuddyPay</Text>
               </View>
-              <Text style={styles.logoText}>Join BuddyPay</Text>
-              <Text style={styles.logoSubtext}>Enter your details to create an account</Text>
+              
+              {/* Progress Indicator */}
+              <View style={styles.progressContainer}>
+                <View style={[styles.progressDot, { backgroundColor: '#0055A4' }]} />
+                <View style={[styles.progressLine, { backgroundColor: currentStep >= 2 ? '#0055A4' : '#e0e0e0' }]} />
+                <View style={[styles.progressDot, { backgroundColor: currentStep >= 2 ? '#0055A4' : '#e0e0e0' }]} />
+              </View>
+              
+              <Text style={styles.screenTitle}>Create Account</Text>
+              <Text style={styles.screenSubtitle}>
+                Join BuddyPay to split expenses with friends
+              </Text>
             </View>
             
-            {/* Registration Form */}
-            <View style={styles.form}>
-              {/* Full Name Input */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Full Name</Text>
-                <View style={[styles.inputContainer, errors.name ? styles.inputError : null]}>
-                  <Icon name="person-outline" size={20} color="#999" style={styles.inputIcon} />
-                  <TextInput
-                    ref={nameInputRef}
-                    style={styles.input}
-                    placeholder="Your full name"
-                    placeholderTextColor="#999"
-                    value={name}
-                    onChangeText={setName}
-                    autoCapitalize="words"
-                    editable={!processing}
-                    onSubmitEditing={() => handleSubmitEditing(emailInputRef)}
-                    returnKeyType="next"
-                    blurOnSubmit={false}
-                  />
-                </View>
-                {errors.name && (
-                  <Text style={styles.errorText}>{errors.name}</Text>
-                )}
-              </View>
-              
-              {/* Email Input */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Email Address</Text>
-                <View style={[styles.inputContainer, errors.email ? styles.inputError : null]}>
-                  <Icon name="mail-outline" size={20} color="#999" style={styles.inputIcon} />
-                  <TextInput
-                    ref={emailInputRef}
-                    style={styles.input}
-                    placeholder="Your email address"
-                    placeholderTextColor="#999"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    value={email}
-                    onChangeText={setEmail}
-                    editable={!processing}
-                    onSubmitEditing={() => handleSubmitEditing(phoneInputRef)}
-                    returnKeyType="next"
-                    blurOnSubmit={false}
-                  />
-                </View>
-                {errors.email && (
-                  <Text style={styles.errorText}>{errors.email}</Text>
-                )}
-              </View>
-              
-              {/* Phone Number Input with Country Code */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Mobile Number</Text>
-                <View style={[styles.inputContainer, errors.phone ? styles.inputError : null]}>
-                  <TouchableOpacity 
-                    style={styles.countryCodeButton}
-                    onPress={() => {
-                      dismissKeyboard();
-                      setShowCountrySelector(true);
-                    }}
-                    disabled={processing}
-                  >
-                    <Text style={styles.countryCodeText}>{selectedCountry.dial_code}</Text>
-                    <Icon name="chevron-down" size={16} color="#999" />
-                  </TouchableOpacity>
-                  
-                  <TextInput
-                    ref={phoneInputRef}
-                    style={styles.input}
-                    placeholder="Phone number"
-                    placeholderTextColor="#999"
-                    keyboardType="phone-pad"
-                    value={phoneNumber}
-                    onChangeText={setPhoneNumber}
-                    editable={!processing}
-                    onSubmitEditing={() => handleSubmitEditing(passwordInputRef)}
-                    returnKeyType="next"
-                    blurOnSubmit={false}
-                  />
-                </View>
-                {errors.phone && (
-                  <Text style={styles.errorText}>{errors.phone}</Text>
-                )}
-              </View>
-              
-              {/* Password Input */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Password</Text>
-                <View style={[styles.inputContainer, errors.password ? styles.inputError : null]}>
-                  <Icon name="lock-closed-outline" size={20} color="#999" style={styles.inputIcon} />
-                  <TextInput
-                    ref={passwordInputRef}
-                    style={styles.input}
-                    placeholder="Create a password (min 8 characters)"
-                    placeholderTextColor="#999"
-                    secureTextEntry={!showPassword}
-                    value={password}
-                    onChangeText={setPassword}
-                    editable={!processing}
-                    onSubmitEditing={() => handleSubmitEditing(pinInputRefs[0])}
-                    returnKeyType="next"
-                    blurOnSubmit={false}
-                  />
-                  <TouchableOpacity 
-                    style={styles.passwordToggle}
-                    onPress={() => setShowPassword(!showPassword)}
-                  >
-                    <Icon 
-                      name={showPassword ? "eye-off-outline" : "eye-outline"} 
-                      size={20} 
-                      color="#999" 
-                    />
-                  </TouchableOpacity>
-                </View>
-                {errors.password && (
-                  <Text style={styles.errorText}>{errors.password}</Text>
-                )}
-              </View>
-              
-              {/* PIN Section */}
-              <View style={styles.pinSection}>
-                <View style={styles.pinHeader}>
-                  <Text style={styles.pinTitle}>Create Security PIN</Text>
-                  <Text style={styles.pinSubtitle}>This 4-digit PIN will be used for quick login</Text>
-                </View>
-                
-                <View style={styles.pinInputsContainer}>
-                  {pin.map((digit, index) => (
-                    <TextInput
-                      key={index}
-                      ref={pinInputRefs[index]}
-                      style={styles.pinInput}
-                      keyboardType="numeric"
-                      maxLength={1}
-                      secureTextEntry={true}
-                      value={digit}
-                      onChangeText={(text) => handlePinChange(text, index)}
-                      onKeyPress={(e) => handlePinKeyPress(e, index)}
-                      editable={!processing}
-                      returnKeyType={index === 3 ? "done" : "next"}
-                      blurOnSubmit={index === 3}
-                      onSubmitEditing={() => {
-                        if (index < 3) {
-                          pinInputRefs[index + 1].current?.focus();
-                        } else {
-                          // Last PIN digit - hide keyboard
-                          Keyboard.dismiss();
-                        }
-                      }}
-                    />
-                  ))}
-                </View>
-                
-                {errors.pin && (
-                  <Text style={[styles.errorText, { textAlign: 'center' }]}>{errors.pin}</Text>
-                )}
-              </View>
-              
-              {/* Biometric Option */}
-              {isBiometricsAvailable && (
-                <View style={styles.biometricSection}>
-                  <View style={styles.biometricIcon}>
-                    <Icon 
-                      name={biometricType === 'Face ID' ? 'scan-outline' : 'finger-print-outline'} 
-                      size={24} 
-                      color="#0A6EFF" 
-                    />
-                  </View>
-                  <View style={styles.biometricTextContainer}>
-                    <Text style={styles.biometricTitle}>Enable {biometricType} Login</Text>
-                    <Text style={styles.biometricSubtitle}>
-                      Use your device's {biometricType.toLowerCase()} for quick and secure login
-                    </Text>
-                  </View>
-                  <Switch
-                    value={biometricsEnabled}
-                    onValueChange={toggleBiometrics}
-                    trackColor={{ false: '#e0e0e0', true: '#b0d0ff' }}
-                    thumbColor={biometricsEnabled ? '#0A6EFF' : '#f4f3f4'}
-                    disabled={!isBiometricsAvailable || processing}
-                  />
-                </View>
-              )}
-              
-              {/* Add space at the bottom for keyboard */}
-              <View style={{ height: keyboardVisible ? 120 : 0 }}></View>
-            </View>
+            {/* Form Steps */}
+            {currentStep === 1 ? renderStepOne() : renderStepTwo()}
+            
+            {/* Spacer for keyboard */}
+            <View style={{ height: keyboardVisible ? 120 : 0 }}></View>
           </ScrollView>
-          
-          {/* Footer with Create Account Button - Always visible */}
-          <View style={styles.footer}>
-            <TouchableOpacity 
-              style={[styles.createAccountButton, processing && styles.buttonDisabled]}
-              onPress={handleRegister}
-              disabled={processing}
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+      
+      {/* Footer with Create Account Button - Always visible */}
+      <View style={styles.footer}>
+        {currentStep === 1 ? (
+          <TouchableOpacity
+            style={styles.button}
+            onPress={nextStep}
+            disabled={processing}
+          >
+            <LinearGradient
+              colors={['#0A2E64', '#0055A4', '#0A78DD']}
+              style={styles.buttonGradient}
+            >
+              <Text style={styles.buttonText}>Continue</Text>
+              <Icon name="arrow-forward" size={20} color="#fff" />
+            </LinearGradient>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.button}
+            onPress={handleRegister}
+            disabled={processing}
+          >
+            <LinearGradient
+              colors={['#0A2E64', '#0055A4', '#0A78DD']}
+              style={styles.buttonGradient}
             >
               {processing ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <Text style={styles.createAccountButtonText}>Create Account</Text>
+                <>
+                  <Text style={styles.buttonText}>Create Account</Text>
+                  <Icon name="checkmark" size={20} color="#fff" />
+                </>
               )}
-            </TouchableOpacity>
-            
-            <View style={styles.loginContainer}>
-              <Text style={styles.loginQuestion}>Already have an account?</Text>
-              <TouchableOpacity onPress={goToLogin}>
-                <Text style={styles.loginLink}>Sign in</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-          
-          {/* Country Code Selector Modal */}
-          <Modal
-            visible={showCountrySelector}
-            transparent
-            animationType="slide"
-            onRequestClose={() => setShowCountrySelector(false)}
-          >
-            <TouchableOpacity 
-              style={styles.modalOverlay}
-              activeOpacity={1}
-              onPress={() => setShowCountrySelector(false)}
-            >
-              <View style={styles.countryModalContainer}>
-                <View style={styles.countryModalHeader}>
-                  <Text style={styles.countryModalTitle}>Select Country Code</Text>
-                  <TouchableOpacity onPress={() => setShowCountrySelector(false)}>
-                    <Icon name="close" size={24} color="#333" />
-                  </TouchableOpacity>
-                </View>
-                
-                <ScrollView style={styles.countryList}>
-                  {popularCountryCodes.map((country) => (
-                    <TouchableOpacity 
-                      key={country.code}
-                      style={styles.countryItem}
-                      onPress={() => {
-                        setSelectedCountry(country);
-                        setShowCountrySelector(false);
-                      }}
-                    >
-                      <Text style={styles.countryName}>{country.name}</Text>
-                      <Text style={styles.countryDialCode}>{country.dial_code}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            </TouchableOpacity>
-          </Modal>
-        </KeyboardAvoidingView>
-      </TouchableWithoutFeedback>
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
+        
+        <View style={styles.footerText}>
+          <Text style={styles.footerQuestion}>Already have an account?</Text>
+          <TouchableOpacity onPress={goToLogin}>
+            <Text style={styles.footerLink}>Sign In</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      
+      {/* Country Selector Modal */}
+      {renderCountrySelector()}
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#fff'
-  },
   container: {
     flex: 1,
-    backgroundColor: '#fff'
+    backgroundColor: '#fff',
+  },
+  keyboardAvoidView: {
+    flex: 1,
   },
   scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 100  // Add padding to ensure content doesn't get hidden behind the footer
+    paddingBottom: 20,
   },
-  logoSection: {
-    alignItems: 'center',
-    paddingVertical: 16,
+  headerContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 24,
+    backgroundColor: '#fff',
+  },
+  backButton: {
+    padding: 8,
+    marginLeft: -8,
   },
   logoContainer: {
-    width: 64,
-    height: 64,
-    backgroundColor: '#0A6EFF',
-    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 16,
+  },
+  logoBackground: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
   },
   logoText: {
     fontSize: 22,
     fontWeight: 'bold',
+    color: '#fff',
+  },
+  appName: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginLeft: 10,
+    color: '#0055A4',
+  },
+  progressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 20,
+  },
+  progressDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  progressLine: {
+    height: 2,
+    flex: 1,
+    marginHorizontal: 4,
+  },
+  screenTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
     color: '#333',
-    marginBottom: 4,
+    marginBottom: 8,
   },
-  logoSubtext: {
-    fontSize: 14,
+  screenSubtitle: {
+    fontSize: 16,
     color: '#666',
-    textAlign: 'center',
+    marginBottom: 20,
   },
-  form: {
-    marginTop: 16,
+  stepTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 24,
+  },
+  formContainer: {
+    paddingHorizontal: 20,
   },
   inputGroup: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   inputLabel: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#333',
-    marginBottom: 6,
+    color: '#555',
+    marginBottom: 8,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    height: 56,
     borderWidth: 1,
     borderColor: '#e0e0e0',
-  },
-  inputError: {
-    borderColor: '#FF3B30',
-    backgroundColor: '#FFF5F5',
+    borderRadius: 12,
+    backgroundColor: '#f9f9f9',
+    paddingHorizontal: 12,
+    height: 54,
   },
   inputIcon: {
-    marginRight: 12,
+    marginRight: 10,
   },
   input: {
     flex: 1,
     fontSize: 16,
     color: '#333',
-    height: '100%',
   },
-  passwordToggle: {
-    padding: 8,
+  inputError: {
+    borderColor: '#e53935',
   },
   errorText: {
-    color: '#FF3B30',
-    fontSize: 13,
+    color: '#e53935',
+    fontSize: 12,
     marginTop: 4,
-    marginLeft: 4,
   },
-  pinSection: {
-    backgroundColor: '#f0f7ff',
-    borderRadius: 16,
-    padding: 16,
-    marginVertical: 16,
+  visibilityToggle: {
+    padding: 6,
   },
-  pinHeader: {
-    marginBottom: 16,
+  passwordTip: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
   },
-  pinTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#0A6EFF',
-    marginBottom: 4,
-  },
-  pinSubtitle: {
-    fontSize: 13,
-    color: '#0A6EFF',
-    opacity: 0.8,
-  },
-  pinInputsContainer: {
+  phoneContainer: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    marginVertical: 8,
-  },
-  pinInput: {
-    width: 48,
-    height: 48,
-    borderWidth: 2,
-    borderColor: '#0A6EFF',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
     borderRadius: 12,
-    backgroundColor: 'white',
-    marginHorizontal: 6,
-    textAlign: 'center',
-    fontSize: 18,
+    backgroundColor: '#f9f9f9',
+    paddingLeft: 12,
+    height: 54,
+  },
+  phoneInput: {
+    flex: 1,
+    fontSize: 16,
     color: '#333',
+    paddingHorizontal: 12,
+  },
+  pinInputContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  pinDigitContainer: {
+    width: width * 0.15,
+    height: 54,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 12,
+    backgroundColor: '#f9f9f9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pinDigit: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    textAlign: 'center',
+    width: '100%',
   },
   biometricSection: {
     flexDirection: 'row',
@@ -841,7 +868,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
     borderRadius: 16,
     padding: 16,
-    marginVertical: 8,
+    marginVertical: 20,
     borderWidth: 1,
     borderColor: '#e0e0e0',
   },
@@ -872,53 +899,50 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderTopWidth: 1,
     borderTopColor: '#f0f0f0',
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    width: '100%',
   },
-  createAccountButton: {
-    backgroundColor: '#0A6EFF',
-    borderRadius: 12,
-    height: 56,
-    justifyContent: 'center',
+  button: {
+    marginBottom: 12,
+  },
+  buttonGradient: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    justifyContent: 'center',
+    height: 56,
+    borderRadius: 28,
   },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
-  createAccountButtonText: {
+  buttonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    marginRight: 8,
   },
-  loginContainer: {
+  footerText: {
     flexDirection: 'row',
     justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
   },
-  loginQuestion: {
+  footerQuestion: {
     color: '#666',
     fontSize: 14,
   },
-  loginLink: {
-    color: '#0A6EFF',
-    fontWeight: 'bold',
+  footerLink: {
+    color: '#0055A4',
     fontSize: 14,
+    fontWeight: '600',
     marginLeft: 5,
   },
-  // Country code selector modal styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
   },
   countryModalContainer: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '80%',
-    paddingBottom: Platform.OS === 'ios' ? 40 : 20, // Extra bottom padding for iOS
+    maxHeight: height * 0.7,
   },
   countryModalHeader: {
     flexDirection: 'row',
