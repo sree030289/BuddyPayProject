@@ -81,6 +81,7 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
   const [error, setError] = useState<string | null>(null);
   const [totalBalance, setTotalBalance] = useState(0); // Track total balance across all friends
   const [refreshing, setRefreshing] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   // Display toast/alert for status message
   React.useEffect(() => {
@@ -123,6 +124,7 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
       setError('User email not found');
       setLoading(false);
       setRefreshing(false);
+      setInitialLoading(false);
       return;
     }
 
@@ -148,6 +150,7 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
           setError('Phone number not set in your profile');
           setLoading(false);
           setRefreshing(false);
+          setInitialLoading(false);
           return;
         }
 
@@ -208,17 +211,20 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
         setFriends(friendsList);
         setLoading(false);
         setRefreshing(false);
+        setInitialLoading(false);
       } else {
         console.warn('No user document found for email:', userEmail);
         setError('User account not found');
         setLoading(false);
         setRefreshing(false);
+        setInitialLoading(false);
       }
     } catch (e) {
       console.error('Error fetching friends:', e);
       setError(e instanceof Error ? e.message : 'Error loading friends');
       setLoading(false);
       setRefreshing(false);
+      setInitialLoading(false);
     }
   };
 
@@ -447,7 +453,7 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
           </TouchableOpacity>
         </View>
 
-        {loading && !refreshing ? (
+        {initialLoading || (loading && !refreshing) ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#0A6EFF" />
             <Text style={styles.loadingText}>Loading friends...</Text>

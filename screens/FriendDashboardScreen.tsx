@@ -146,12 +146,14 @@ const FriendDashboardScreen = () => {
       const groupsQuery = query(groupsRef, where('memberIds', 'array-contains', user.uid));
       const groupsSnapshot = await getDocs(groupsQuery);
       
-      // Filter for groups that also contain the friend
+      // Check if friend is in any of those groups
       for (const groupDoc of groupsSnapshot.docs) {
         const groupData = groupDoc.data();
         
         // Check if friend is a member of this group
         if (groupData.memberIds && groupData.memberIds.includes(friendId)) {
+          console.log(`Found shared group: ${groupData.name}`);
+          
           // Extract the friend's balance in this group
           let friendBalance = 0;
           if (groupData.members && Array.isArray(groupData.members)) {
@@ -173,6 +175,8 @@ const FriendDashboardScreen = () => {
           });
         }
       }
+      
+      console.log(`Found ${sharedGroupsData.length} shared groups`);
       
       // Also check the expenses directly between the user and friend
       const expensesRef = collection(db, 'users', userPhone, 'friends', friendId, 'expenses');
@@ -230,7 +234,7 @@ const FriendDashboardScreen = () => {
       setRefreshing(false);
     }
   };
-  
+
   // Helper function to calculate how much a user owes in a group
   const calculateUserAmountInGroup = (members: any[], userId: string): number => {
     if (!members || !Array.isArray(members)) return 0;
@@ -313,6 +317,98 @@ const FriendDashboardScreen = () => {
     );
   }
 
+  const renderSharedGroupsSection = () => {
+    if (loading && !refreshing) {
+      return (
+        <View style={styles.loadingGroupsContainer}>
+          <ActivityIndicator size="small" color="#0A6EFF" />
+          <Text style={styles.loadingGroupsText}>Loading shared groups...</Text>
+        </View>
+      );
+    }
+    
+    if (error) {
+      return (
+        <View style={styles.errorContainer}>
+          <Icon name="alert-circle-outline" size={40} color="#FF3B30" />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity 
+            style={styles.retryButton}
+            onPress={fetchFriendData}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    
+    if (sharedGroups.length === 0) {
+      return (
+        <View style={styles.emptyStateContainer}>
+          <Text style={styles.emptyStateText}>No shared groups yet</Text>
+          <Text style={styles.emptyStateSubText}>
+            Create a group with {friendName} to track group expenses
+          </Text>
+          <TouchableOpacity 
+            style={styles.createGroupButton}
+            onPress={() => navigation.navigate('CreateGroupScreen', {
+              initialFriendIds: [friendId],
+              initialFriendNames: [friendName]
+            })}
+          >
+            <Text style={styles.createGroupButtonText}>Create a group</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    
+    return (
+      <FlatList
+        data={sharedGroups}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <TouchableOpacity 
+            style={styles.transactionItem}
+            onPress={() => handleGroupPress(item)}
+          >
+            <View style={styles.groupIconContainer}>
+              <Icon 
+                name={item.id === 'direct-expenses' ? "person-outline" : getGroupIcon(item.name) as any} 
+                size={24} 
+                color="#333" 
+                style={styles.groupIcon} 
+              />
+            </View>
+            
+            <View style={styles.transactionDetails}>
+              <View style={styles.groupNameRow}>
+                <Text style={styles.transactionTitle}>{item.name}</Text>
+                {item.members && item.members > 2 && (
+                  <View style={styles.memberCountContainer}>
+                    <Icon name="people-outline" size={14} color="#757575" />
+                    <Text style={styles.memberCountText}>{item.members}</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.transactionSubtitle}>
+                {item.date}
+              </Text>
+            </View>
+            
+            <View style={styles.amountContainer}>
+              <Text style={styles.borrowedText}>
+                {totalOwed >= 0 ? 'you lent' : 'you borrowed'}
+              </Text>
+              <Text style={styles.amountText}>₹{item.amount}</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+        refreshing={refreshing}
+        onRefresh={handleRefresh}
+      />
+    );
+  };
+
   return (
     <SafeAreaView style={{flex: 1, backgroundColor: '#0A6EFF'}}>
       <View style={styles.container}>
@@ -369,7 +465,6 @@ const FriendDashboardScreen = () => {
             <Text style={[styles.actionText, { color: '#0A6EFF' }]}>Charts</Text>
           </TouchableOpacity>
           
-          
           <TouchableOpacity style={styles.actionBtn} onPress={handleButtonClick}>
             <Icon name="download-outline" size={16} color="#0A6EFF" style={styles.actionIcon} />
             <Text style={[styles.actionText, { color: '#0A6EFF' }]}>Export</Text>
@@ -390,79 +485,7 @@ const FriendDashboardScreen = () => {
       {/* Shared Groups List */}
       <View style={styles.transactionsContainer}>
         <Text style={styles.sectionHeader}>Shared Groups</Text>
-        
-        {sharedGroups.length > 0 ? (
-          <FlatList
-            data={sharedGroups}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <TouchableOpacity 
-                style={styles.transactionItem}
-                onPress={() => handleGroupPress(item)}
-              >
-                <View style={styles.groupIconContainer}>
-                  <Icon 
-                    name={item.id === 'direct-expenses' ? "person-outline" : getGroupIcon(item.name) as any} 
-                    size={24} 
-                    color="#333" 
-                    style={styles.groupIcon} 
-                  />
-                </View>
-                
-                <View style={styles.transactionDetails}>
-                  <View style={styles.groupNameRow}>
-                    <Text style={styles.transactionTitle}>{item.name}</Text>
-                    {item.members && item.members > 2 && (
-                      <Icon name="people-outline" size={14} color="#757575" style={{marginLeft: 5}} />
-                    )}
-                  </View>
-                  <Text style={styles.transactionSubtitle}>
-                    {item.date}
-                  </Text>
-                </View>
-                
-                <View style={styles.amountContainer}>
-                  <Text style={styles.borrowedText}>
-                    {totalOwed >= 0 ? 'you lent' : 'you borrowed'}
-                  </Text>
-                  <Text style={styles.amountText}>₹{item.amount}</Text>
-                </View>
-              </TouchableOpacity>
-            )}
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            ListEmptyComponent={
-              <Text style={styles.noDataText}>No shared expenses yet</Text>
-            }
-          />
-        ) : error ? (
-          <View style={styles.errorContainer}>
-            <Icon name="alert-circle-outline" size={40} color="#FF3B30" />
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity 
-              style={styles.retryButton}
-              onPress={fetchFriendData}
-            >
-              <Text style={styles.retryButtonText}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View style={styles.emptyStateContainer}>
-            <Text style={styles.emptyStateText}>No shared groups yet</Text>
-            <Text style={styles.emptyStateSubText}>
-              Create a group with {friendName} to track group expenses
-            </Text>
-            <TouchableOpacity 
-              style={styles.createGroupButton}
-              onPress={() => navigation.navigate('CreateGroupScreen', {
-                initialFriendIds: [friendId],
-                initialFriendNames: [friendName]
-              })}
-            >
-              <Text style={styles.createGroupButtonText}>Create a group</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+        {renderSharedGroupsSection()}
       </View>
 
       {/* Use SharedTabBar instead of custom tab bar */}
@@ -487,6 +510,16 @@ const styles = StyleSheet.create({
     marginTop: 10,
     color: '#fff',
     fontSize: 16
+  },
+  loadingGroupsContainer: {
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  loadingGroupsText: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 10
   },
   header: {
     backgroundColor: '#0A6EFF', // Bright blue as shown in the screenshot
@@ -599,6 +632,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
     color: '#212121'
+  },
+  memberCountContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginLeft: 8
+  },
+  memberCountText: {
+    fontSize: 12,
+    color: '#757575',
+    marginLeft: 2
   },
   transactionSubtitle: {
     fontSize: 14,

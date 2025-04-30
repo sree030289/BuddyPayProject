@@ -92,6 +92,9 @@ const AddExpenseScreen = () => {
   const [selectedMembers, setSelectedMembers] = useState<Record<string, boolean>>({});
   const [customSplits, setCustomSplits] = useState<CustomSplit[]>([]);
 
+  // Add these state variables for handling group members
+  const [groupMemberIds, setGroupMemberIds] = useState<string[]>([]);
+  const [allFriends, setAllFriends] = useState<GroupMember[]>([]);
 
   // Modal states
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -322,6 +325,7 @@ const AddExpenseScreen = () => {
     }
   };
   
+  // Modified fetchGroupMembers function to track group member IDs
   const fetchGroupMembers = async () => {
     if (!groupId || !user) return;
     
@@ -334,6 +338,10 @@ const AddExpenseScreen = () => {
         const groupData = groupSnap.data();
         
         if (groupData.members && Array.isArray(groupData.members)) {
+          // Store group member IDs for filtering friend lists
+          const memberIds = groupData.members.map((member: any) => member.uid);
+          setGroupMemberIds(memberIds);
+          
           // Process only group members - this ensures only people in the group are shown
           const membersList = groupData.members.map((member: any) => {
             const isCurrentUser = member.uid === user.uid;
@@ -362,6 +370,9 @@ const AddExpenseScreen = () => {
           if (currentUser) {
             setPaidBy(currentUser);
           }
+          
+          // Also fetch all user's friends to show non-group members for splitting
+          fetchNonGroupFriends(memberIds);
         }
       }
     } catch (error) {
@@ -369,6 +380,51 @@ const AddExpenseScreen = () => {
       setError('Failed to load group members');
     } finally {
       setLoading(false);
+    }
+  };
+  
+  // New function to fetch friends that are not in the group
+  const fetchNonGroupFriends = async (groupMemberIds: string[]) => {
+    if (!user || !user.uid) return;
+    
+    try {
+      // Get the user reference
+      const userRef = doc(db, 'users', user.uid);
+      const userSnap = await getDoc(userRef);
+      
+      if (userSnap.exists()) {
+        const userData = userSnap.data();
+        const userPhone = userData.phone;
+        
+        if (userPhone) {
+          // Get friends from the subcollection
+          const friendsRef = collection(db, 'users', userPhone, 'friends');
+          const friendsSnapshot = await getDocs(friendsRef);
+          
+          if (!friendsSnapshot.empty) {
+            // Process friends from the subcollection
+            const friendsList = friendsSnapshot.docs.map(doc => ({
+              uid: doc.id,
+              name: doc.data().name || 'Friend',
+              email: doc.data().email,
+              phone: doc.data().phone,
+              isSelected: false
+            }));
+            
+            // Store all friends for filtering
+            setAllFriends(friendsList);
+            
+            // Filter out friends who are already in the group
+            const nonGroupFriends = friendsList.filter(
+              friend => !groupMemberIds.includes(friend.uid)
+            );
+            
+            console.log(`Found ${nonGroupFriends.length} friends who are not in the group`);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching non-group friends:', error);
     }
   };
   
@@ -882,7 +938,11 @@ const AddExpenseScreen = () => {
     const currentGroupId = route.params?.groupId || groupId;
     const currentFriendId = route.params?.friendId || friendId;
     
-    if (!currentGroupId && !currentFriendId) {
+    // Modify validation to handle tab bar expense creation
+    // If no group or friend is specified, but we have selected members, it's valid
+    const hasSelectedMembers = Object.values(selectedMembers).some(selected => selected);
+    
+    if (!currentGroupId && !currentFriendId && !hasSelectedMembers) {
       setError('Please select a group or friend for this expense');
       return;
     }
@@ -929,6 +989,30 @@ const AddExpenseScreen = () => {
       } else if (currentFriendId) {
         // Handle friend expense
         await saveFriendExpense({...expenseData, friendId: currentFriendId});
+      } else if (hasSelectedMembers) {
+        // New case: Handle tab bar expense creation with selected members
+        // We'll create this as a friend expense with the first selected member
+        const selectedMemberIds = Object.entries(selectedMembers)
+          .filter(([_, isSelected]) => isSelected && _ !== user.uid)  
+          .map(([id]) => id);
+        
+        if (selectedMemberIds.length > 0) {
+          // Get first selected member that isn't the current user
+          const targetFriendId = selectedMemberIds[0];
+          const targetFriend = members.find(m => m.uid === targetFriendId);
+          
+          if (targetFriend) {
+            await saveFriendExpense({
+              ...expenseData, 
+              friendId: targetFriendId,
+              friendName: targetFriend.name
+            });
+          } else {
+            throw new Error('Selected member not found in members list');
+          }
+        } else {
+          throw new Error('No friends selected to split with');
+        }
       } else {
         throw new Error('Missing group or friend information');
       }
@@ -1463,6 +1547,35 @@ const AddExpenseScreen = () => {
             )}
           </View>
           
+          {/* Select/Deselect All buttons */}
+          <View style={styles.selectionButtonsContainer}>
+            <TouchableOpacity
+              style={styles.selectAllButton}
+              onPress={() => {
+                const newSelectedMembers = { ...selectedMembers };
+                members.forEach(member => {
+                  newSelectedMembers[member.uid] = true;
+                });
+                setSelectedMembers(newSelectedMembers);
+              }}
+            >
+              <Text style={styles.selectAllButtonText}>Select All</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.deselectAllButton}
+              onPress={() => {
+                const newSelectedMembers = { ...selectedMembers };
+                members.forEach(member => {
+                  newSelectedMembers[member.uid] = false;
+                });
+                setSelectedMembers(newSelectedMembers);
+              }}
+            >
+              <Text style={styles.deselectAllButtonText}>Deselect All</Text>
+            </TouchableOpacity>
+          </View>
+
           <FlatList
             data={members.filter(m => 
               m.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -1996,23 +2109,7 @@ const styles = StyleSheet.create({
   contextText: {
     color: '#fff', 
     marginLeft: 8, 
-    fontWeight: '500'
-  },
-  contextButton: {
-    backgroundColor: 'rgba(255,255,255,0.2)', 
-    paddingHorizontal: 10, 
-    paddingVertical: 4,
-    borderRadius: 12
-  },
-  contextButtonText: {
-    color: '#fff', 
-    fontSize: 12
-  },
-  
-  // Scanning styles
-  scanningContainer: {
-    backgroundColor: 'rgba(10, 110, 255, 0.1)',
-    paddingVertical: 12,
+    fontWeight: '500',
     paddingHorizontal: 16,
     marginHorizontal: 16,
     marginTop: 16,
@@ -2581,6 +2678,34 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  selectionButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  selectAllButton: {
+    backgroundColor: '#e6f0ff',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  selectAllButtonText: {
+    color: '#0A6EFF',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  deselectAllButton: {
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  deselectAllButtonText: {
+    color: '#666',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });
 export default AddExpenseScreen;
