@@ -1,4 +1,4 @@
-// Updated FriendsScreen.tsx with TypeScript fixes and new features
+// Complete refined FriendsScreen.tsx implementation
 
 import React, { useState, useCallback, useEffect } from 'react';
 import {
@@ -28,7 +28,7 @@ import {
   getDoc,
   doc
 } from 'firebase/firestore';
-import { useAuth } from '../components/AuthContext'; // Import useAuth hook
+import { useAuth } from '../components/AuthContext';
 
 type FriendsScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'FriendsScreen'>;
 
@@ -46,40 +46,20 @@ interface FriendsScreenProps {
   };
 }
 
-// Group types and their corresponding icons
-const GROUP_TYPES = {
-  "flight trip": "airplane-outline",
-  "beach trip": "umbrella-outline",
-  "flatmate": "home-outline",
-  "gettogether": "people-outline",
-  "party": "wine-outline"
-};
-
 const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
-  const { user, isLoading: authLoading } = useAuth(); // Get user data from AuthContext
+  const { user, isLoading: authLoading } = useAuth();
   
   // Get params from route if available
   const routeParams = route?.params || {};
   const statusFromRoute = routeParams.status || routeParams.toastStatus;
   const refreshTriggerFromRoute = routeParams.refreshTrigger || 0;
-  const insideTabNavigatorParam = routeParams.insideTabNavigator || false;
   
-  // Debug logging
-  React.useEffect(() => {
-    console.log('FriendsScreen mounted with:');
-    console.log('- User from AuthContext:', user);
-    console.log('- refreshTrigger:', refreshTriggerFromRoute);
-    console.log('- toastStatus:', statusFromRoute);
-    console.log('- insideTabNavigator:', insideTabNavigatorParam);
-    console.log('- routeParams:', JSON.stringify(routeParams));
-  }, [user]);
-
   const [filterVisible, setFilterVisible] = useState(false);
   const [friends, setFriends] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [totalBalance, setTotalBalance] = useState(0); // Track total balance across all friends
+  const [totalBalance, setTotalBalance] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
 
@@ -97,7 +77,6 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
   // Refetch when refreshTrigger changes
   React.useEffect(() => {
     if (refreshTriggerFromRoute > 0 && user) {
-      console.log("Refresh triggered, fetching friends...");
       fetchFriends();
     }
   }, [refreshTriggerFromRoute, user]);
@@ -108,9 +87,13 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
       if (user && !authLoading) {
         fetchFriends();
       }
-      return () => {}; // cleanup function
+      return () => {};
     }, [user, filter, authLoading])
   );
+
+  const handleSplitBill = () => {
+    navigation.navigate('AddExpenseScreen');
+  };
 
   const fetchFriends = async () => {
     if (!user) {
@@ -120,7 +103,6 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
 
     const userEmail = user.email;
     if (!userEmail) {
-      console.warn('No email available for user');
       setError('User email not found');
       setLoading(false);
       setRefreshing(false);
@@ -131,22 +113,17 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
     setLoading(true);
     setRefreshing(true);
     setError(null);
-    console.log('Fetching for user email:', userEmail);
-
+    
     try {
       // First, get the user document to find their phone
       const userQuery = query(collection(db, 'users'), where('email', '==', userEmail));
-      console.log('Executing query for user with email:', userEmail);
       const userSnapshot = await getDocs(userQuery);
-      console.log('User query returned:', userSnapshot.docs.length, 'documents');
 
       if (!userSnapshot.empty) {
         const userData = userSnapshot.docs[0].data();
         const userPhone = userData.phone;
-        console.log('Found user phone:', userPhone);
 
         if (!userPhone) {
-          console.warn('Phone number not found for user');
           setError('Phone number not set in your profile');
           setLoading(false);
           setRefreshing(false);
@@ -155,17 +132,14 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
         }
 
         // Get friends collection directly
-        console.log('Fetching friends from path:', `users/${userPhone}/friends`);
         const friendsRef = collection(db, 'users', userPhone, 'friends');
         const friendsQuery = filter 
           ? query(friendsRef, where('status', '==', filter))
           : friendsRef;
           
         const friendsSnapshot = await getDocs(friendsQuery);
-        console.log('Friends query returned:', friendsSnapshot.docs.length, 'documents');
         
         const friendsList = friendsSnapshot.docs.map((doc) => {
-          console.log('Friend document:', doc.id, JSON.stringify(doc.data()));
           return {
             id: doc.id,
             ...doc.data(),
@@ -206,21 +180,17 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
         }
         
         setTotalBalance(totalOwed);
-        
-        console.log('Friends processed:', friendsList.length);
         setFriends(friendsList);
         setLoading(false);
         setRefreshing(false);
         setInitialLoading(false);
       } else {
-        console.warn('No user document found for email:', userEmail);
         setError('User account not found');
         setLoading(false);
         setRefreshing(false);
         setInitialLoading(false);
       }
     } catch (e) {
-      console.error('Error fetching friends:', e);
       setError(e instanceof Error ? e.message : 'Error loading friends');
       setLoading(false);
       setRefreshing(false);
@@ -247,11 +217,11 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
   // Helper function to determine group icon
   const getGroupIcon = (groupType: string = "") => {
     const type = groupType.toLowerCase();
-    for (const [key, value] of Object.entries(GROUP_TYPES)) {
-      if (type.includes(key)) {
-        return value;
-      }
-    }
+    if (type.includes("flight") || type.includes("trip")) return "airplane-outline";
+    if (type.includes("beach")) return "umbrella-outline";
+    if (type.includes("flat") || type.includes("home")) return "home-outline";
+    if (type.includes("together") || type.includes("group")) return "people-outline";
+    if (type.includes("party")) return "wine-outline";
     return "people-outline"; // Default icon
   };
 
@@ -261,13 +231,11 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
   };
 
   const navigateToAddFriends = () => {
-    // Ensure we're passing only defined properties to match the types
     const params = {
       userId: user?.uid,
-      email: user?.email || undefined // Convert null to undefined if needed
+      email: user?.email || undefined
     };
     
-    console.log('Navigating to AddFriendsScreen with:', params);
     navigation.navigate('AddFriendsScreen', params);
   };
 
@@ -280,29 +248,29 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
     const bgColors = ['#F44336', '#9C27B0', '#FF9800', '#3F51B5', '#4CAF50', '#009688'];
     const randomColor = bgColors[item.name.charCodeAt(0) % bgColors.length];
     
-    // Determine if the item has group information and what type of group
-    const hasGroup = item.groups && item.groups.length > 0;
-    const groupType = hasGroup ? item.groups[0].name : "";
-    const groupIcon = getGroupIcon(groupType);
+    // Helper function to capitalize the first letter of each word
+    const capitalizeWords = (str: string) => {
+      return str
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ');
+    };
     
     // Format the amount display correctly
     const owedAmount = item.totalAmount || 0;
     const amountDisplay = Math.abs(owedAmount).toFixed(0);
     const isPositive = owedAmount > 0;
     
+    // Get capitalized name
+    const displayName = capitalizeWords(item.name || '');
+    
     return (
       <TouchableOpacity
         style={styles.friendRow}
         onPress={() => {
-          console.log('Navigating to FriendsDashboardScreen with:', {
-            friendId: item.id,
-            friendName: item.name,
-            email: user?.email || undefined
-          });
-          
           navigation.navigate('FriendsDashboardScreen', {
             friendId: item.id,
-            friendName: item.name,
+            friendName: displayName,
             totalOwed: item.totalAmount || 0,
             email: user?.email || undefined,
             groups: item.groups || []
@@ -310,12 +278,13 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
         }}
       >
         <View style={[styles.friendIcon, { backgroundColor: randomColor }]}>
-          <Text style={styles.friendInitial}>{item.name?.[0]}</Text>
+          <Text style={styles.friendInitial}>{displayName.charAt(0)}</Text>
         </View>
         
         <View style={styles.friendInfo}>
-          <Text style={styles.friendName}>{item.name}</Text>
+          <Text style={styles.friendName}>{displayName}</Text>
           
+          {/* Always show Pending status as a smaller tag, not as the primary balance text */}
           {item.status === 'pending' ? (
             <View style={styles.statusContainer}>
               <Icon name="time-outline" size={14} color="#FF9800" />
@@ -328,15 +297,13 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
             ]}>
               {isPositive ? `owes you ₹${amountDisplay}` : `you owe ₹${amountDisplay}`}
             </Text>
-          ) : hasGroup && (
-            <View style={styles.groupContainer}>
-              <Icon name={groupIcon} size={16} color="#555" />
-              <Text style={styles.groupName}>{item.groups[0].name}</Text>
-            </View>
+          ) : (
+            <Text style={styles.settledStatus}>Settled up</Text>
           )}
         </View>
         
         <View style={styles.amountWrap}>
+          {/* Only show amount if there is one, regardless of status */}
           {owedAmount !== 0 ? (
             <>
               <Text style={[
@@ -353,13 +320,9 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
               </Text>
             </>
           ) : item.status === 'pending' ? (
-            <Text style={[styles.amountText, { color: '#FF9800' }]}>
-              Pending
-            </Text>
+            <Text style={styles.statusText}>Pending</Text>
           ) : (
-            <Text style={[styles.amountText, { color: '#757575' }]}>
-              Settled
-            </Text>
+            <Text style={styles.settledText}>Settled</Text>
           )}
         </View>
       </TouchableOpacity>
@@ -381,6 +344,7 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
   return (
     <SafeAreaView style={{flex: 1, backgroundColor: '#fff'}}>
       <View style={styles.screenContainer}>
+        {/* Header */}
         <View style={styles.topBar}>
           <Text style={styles.topBarTitle}>Friends</Text>
           <TouchableOpacity onPress={() => setFilterVisible(true)}>
@@ -388,6 +352,7 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
           </TouchableOpacity>
         </View>
 
+        {/* Filter Modal */}
         <Modal visible={filterVisible} transparent animationType="fade">
           <TouchableOpacity style={styles.modalOverlay} onPress={() => setFilterVisible(false)}>
             <View style={styles.filterModal}>
@@ -412,7 +377,8 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
           </TouchableOpacity>
         </Modal>
 
-        <View style={styles.headerActions}>
+        {/* Balance and Add Friend row */}
+        <View style={styles.balanceRow}>
           {totalBalance !== 0 ? (
             <Text style={[
               styles.totalAmount, 
@@ -431,13 +397,16 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
             onPress={navigateToAddFriends}
           >
             <Icon name="person-add" size={18} color="#0A6EFF" />
-            <Text style={styles.addFriendsText}>Add friends</Text>
+            <Text style={styles.addFriendsText}>Add friend</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Action buttons with icons */}
+        {/* Action buttons row */}
         <View style={styles.actionButtonsContainer}>
-          <TouchableOpacity style={styles.actionButton} onPress={handleButtonClick}>
+          <TouchableOpacity 
+            style={styles.actionButton} 
+            onPress={handleSplitBill}
+          >
             <Icon name="cash-outline" size={20} color="#0A6EFF" />
             <Text style={styles.actionButtonText}>Split Bill</Text>
           </TouchableOpacity>
@@ -453,6 +422,7 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
           </TouchableOpacity>
         </View>
 
+        {/* Content area with loading/error/empty states or friend list */}
         {initialLoading || (loading && !refreshing) ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#0A6EFF" />
@@ -487,7 +457,7 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
             ItemSeparatorComponent={() => <View style={styles.separator} />}
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            contentContainerStyle={{ paddingBottom: 80 }} // Add padding to avoid overlap with tab bar
+            contentContainerStyle={styles.listContent}
           />
         )}
       </View>
@@ -495,9 +465,7 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
   );
 };
 
-// Styles remain the same
 const styles = StyleSheet.create({
-  // ... existing styles
   screenContainer: {
     flex: 1,
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 20 : 10,
@@ -510,59 +478,72 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#0A6EFF',
-    padding: 15,
+    padding: 16,
     borderRadius: 10,
     marginBottom: 20
   },
   topBarTitle: {
     color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold'
+    fontSize: 20,
+    fontWeight: '700'
   },
-  headerActions: {
-    marginBottom: 10,
+  // Balance row styling
+  balanceRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center'
+    alignItems: 'center',
+    marginBottom: 24
   },
   totalAmount: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#0A2A66'
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#212121',
+    flex: 1,
+    paddingRight: 10,
+    lineHeight: 28
   },
   addFriendsButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4
+    backgroundColor: '#E6F0FF',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#D6E4FF'
   },
   addFriendsText: {
     color: '#0A6EFF',
-    fontWeight: 'bold'
+    fontWeight: '600',
+    marginLeft: 6,
+    fontSize: 15
   },
   // Action buttons styles
   actionButtonsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 15
+    marginBottom: 24
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f0f5ff',
-    padding: 10,
-    borderRadius: 8,
+    backgroundColor: '#f2f7ff',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
     flex: 1,
-    marginHorizontal: 5,
+    marginHorizontal: 4,
     borderWidth: 1,
     borderColor: '#e0e8ff'
   },
   actionButtonText: {
     color: '#0A6EFF',
-    marginLeft: 5,
-    fontSize: 13,
+    marginLeft: 8,
+    fontSize: 15,
     fontWeight: '500'
   },
+  // Modal styles
   modalOverlay: {
     flex: 1,
     justifyContent: 'flex-start',
@@ -572,32 +553,35 @@ const styles = StyleSheet.create({
   },
   filterModal: {
     backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 15
+    borderRadius: 12,
+    padding: 16
   },
   filterOption: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderColor: '#ddd'
+    borderColor: '#eee'
   },
   cancelText: {
     color: '#0A6EFF',
     textAlign: 'center',
-    marginTop: 10,
-    fontWeight: 'bold'
+    marginTop: 12,
+    fontWeight: '600',
+    padding: 8
   },
+  // Friend row styling
   friendRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12
+    paddingVertical: 20,
+    paddingHorizontal: 4
   },
   friendIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16
@@ -608,22 +592,18 @@ const styles = StyleSheet.create({
   friendInitial: {
     color: '#fff',
     fontWeight: 'bold',
-    fontSize: 18
+    fontSize: 22
   },
   friendName: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#111'
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#212121',
+    marginBottom: 6
   },
-  groupContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4
-  },
+  // Status styling
   statusContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4
+    alignItems: 'center'
   },
   pendingStatus: {
     fontSize: 13,
@@ -631,32 +611,49 @@ const styles = StyleSheet.create({
     marginLeft: 4,
     fontWeight: '500'
   },
-  balanceInfo: {
+  statusText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#FF9800'
+  },
+  settledStatus: {
     fontSize: 13,
-    marginTop: 4,
+    color: '#757575',
     fontWeight: '500'
   },
-  groupName: {
-    fontSize: 13,
-    color: '#555',
-    marginLeft: 4
+  settledText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#757575'
   },
+  // Balance info styling
+  balanceInfo: {
+    fontSize: 14,
+    fontWeight: '500'
+  },
+  // Amount display styling
   amountWrap: {
-    alignItems: 'flex-end'
+    alignItems: 'flex-end',
+    minWidth: 80,
+    marginLeft: 10
   },
   amountText: {
-    fontSize: 14,
+    fontSize: 18,
     fontWeight: '600'
   },
   amountLabel: {
-    fontSize: 10,
-    color: '#757575',
+    fontSize: 12,
     marginTop: 2
   },
+  // List styling
   separator: {
     height: 1,
     backgroundColor: '#eee'
   },
+  listContent: {
+    paddingBottom: 80
+  },
+  // Loading styles
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -666,33 +663,38 @@ const styles = StyleSheet.create({
     marginTop: 10,
     color: '#666'
   },
+  // Empty state styling
   emptyStateContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center'
   },
   emptyStateTitle: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#888'
+    marginTop: 16,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#555'
   },
   emptyStateSubtitle: {
     fontSize: 14,
-    color: '#aaa',
+    color: '#888',
     textAlign: 'center',
-    marginTop: 5
+    marginTop: 8,
+    maxWidth: 240
   },
   emptyStateButton: {
-    marginTop: 20,
+    marginTop: 24,
     backgroundColor: '#0A6EFF',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12
   },
   emptyStateButtonText: {
     color: '#fff',
-    fontWeight: 'bold'
+    fontWeight: 'bold',
+    fontSize: 16
   },
+  // Error state styling
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -716,7 +718,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0A6EFF',
     paddingVertical: 10,
     paddingHorizontal: 20,
-    borderRadius: 8
+    borderRadius: 10
   },
   retryText: {
     color: '#fff',

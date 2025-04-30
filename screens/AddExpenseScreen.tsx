@@ -75,7 +75,7 @@ const AddExpenseScreen = () => {
   const keyboardHeight = useRef(new Animated.Value(0)).current;
   
   // Get params from navigation
-  const { groupId, groupName, friendId, friendName } = route.params || {};
+  let { groupId, groupName, friendId, friendName } = route.params || {};
   
   // Basic expense state
   const [description, setDescription] = useState('');
@@ -139,19 +139,26 @@ const AddExpenseScreen = () => {
     { id: 'shares', name: 'Split by shares', description: 'Use shares to determine split ratio' }
   ];
   useEffect(() => {
-    // For group expense
-    if (groupId) {
-      fetchGroupMembers();
+    console.log("Component mounted with params:", route.params);
+    
+    // For group expense - ensure this runs first and only once
+    if (route.params?.groupId) {
+      const groupId = route.params.groupId;
+      console.log(`Initial load for group: ${groupId}`);
+      fetchGroupMembers(groupId);
     } 
     // For friend expense
-    else if (friendId) {
-      setupFriendExpense();
+    else if (route.params?.friendId) {
+      const friendId = route.params.friendId;
+      console.log(`Initial load for friend: ${friendId}`);
+      setupFriendExpense(route.params.friendId, route.params.friendName);
     }
-    console.log("Component mounted, fetching groups and friends...");
-
-    // Fetch available groups for dropdown
+    
+    // Fetch available groups for dropdown - do this after group/friend setup
     fetchAvailableGroups();
-  }, [groupId, friendId, user]);
+  }, [user?.uid]); // Only depend on user.uid to ensure this runs once when user is available
+
+  
   useEffect(() => {
   // Only fetch if user exists
   if (user && user.uid) {
@@ -287,23 +294,31 @@ const AddExpenseScreen = () => {
   
   // Initialize when component mounts
   useEffect(() => {
-    // For group expense
-    if (groupId) {
+    console.log("Component mounted with params:", route.params);
+    
+    // For group expense - ensure this runs first and only once
+    if (route.params?.groupId) {
+      const groupId = route.params.groupId;
+      console.log(`Initial load for group: ${groupId}`);
       fetchGroupMembers();
     } 
     // For friend expense
-    else if (friendId) {
+    else if (route.params?.friendId) {
+      const friendId = route.params.friendId;
+      console.log(`Initial load for friend: ${friendId}`);
       setupFriendExpense();
     }
     
-    // Fetch available groups for dropdown
+    // Fetch available groups for dropdown - do this after group/friend setup
     fetchAvailableGroups();
-  }, [groupId, friendId]);
+  }, [user?.uid]); // Only depend on user.uid to ensure this runs once when user is available
+  
   
   const setupFriendExpense = async () => {
     if (!friendId || !user) return;
     
     setLoading(true);
+    
     try {
       // Create a simple two-person members array
       const membersArray: GroupMember[] = [
@@ -341,7 +356,10 @@ const AddExpenseScreen = () => {
   
   // Modified fetchGroupMembers function to track group member IDs
   const fetchGroupMembers = async () => {
-    if (!groupId || !user) return;
+    if (!groupId || !user) {
+      console.log("Missing groupId or user, cannot fetch members");
+      return;
+    }
     
     console.log(`Fetching members for group: ${groupId}`);
     setLoading(true);
@@ -354,12 +372,6 @@ const AddExpenseScreen = () => {
       if (groupSnap.exists()) {
         const groupData = groupSnap.data();
         console.log(`Group data loaded: ${groupData.name}`);
-        console.log('Group data structure:', JSON.stringify({
-          hasMembers: !!groupData.members,
-          membersLength: groupData.members?.length,
-          hasMemberIds: !!groupData.memberIds,
-          memberIdsLength: groupData.memberIds?.length
-        }));
         
         let membersList: GroupMember[] = [];
         
@@ -436,7 +448,7 @@ const AddExpenseScreen = () => {
           const memberIds = membersList.map(member => member.uid);
           setGroupMemberIds(memberIds);
           
-          // Set members state
+          // Set members state with the new list
           setMembers(membersList);
           
           // Setup initial selected members state
@@ -1695,21 +1707,24 @@ const validateExpense = () => {
         <View style={styles.modalContent}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Split with</Text>
-            <TouchableOpacity onPress={() => setShowMembersModal(false)}>
-              <Ionicons name="close" size={24} color="#333" />
-            </TouchableOpacity>
-          </View>
-          
-          {/* Debugging information */}
-          {__DEV__ && (
-            <View style={{padding: 8, backgroundColor: '#f0f0f0', marginHorizontal: 16, marginBottom: 8, borderRadius: 4}}>
-              <Text style={{fontSize: 12, color: '#333'}}>
-                Context: {groupId ? `Group "${groupName}"` : friendId ? `Friend "${friendName}"` : 'No context'}{'\n'}
-                Members Loaded: {members.length}{'\n'}
-                Members Selected: {Object.values(selectedMembers).filter(Boolean).length}
-              </Text>
+            <View style={styles.headerActions}>
+              <TouchableOpacity 
+                style={styles.infoButton}
+                onPress={() => {
+                  Alert.alert(
+                    "Split Information",
+                    "Select the people you want to split this expense with. Only selected people will share the cost.",
+                    [{ text: "Got it" }]
+                  );
+                }}
+              >
+                <Ionicons name="information-circle-outline" size={24} color="#0A6EFF" />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowMembersModal(false)}>
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
             </View>
-          )}
+          </View>
           
           <View style={styles.searchContainer}>
             <Ionicons name="search" size={20} color="#666" style={styles.searchIcon} />
@@ -1767,7 +1782,6 @@ const validateExpense = () => {
                 <TouchableOpacity 
                   style={styles.memberItem}
                   onPress={() => {
-                    console.log(`Toggling selection for: ${item.name} (${item.uid})`);
                     toggleMemberSelection(item.uid);
                   }}
                 >
@@ -1872,7 +1886,9 @@ const validateExpense = () => {
   
   // Function to handle changing the group or friend
   const handleChangeGroupOrFriend = (item: any) => {
-    // Update the route params
+    console.log("Changed group/friend to:", item);
+  
+    // Update the route params first to ensure groupId/friendId are set properly
     if (item.type === 'group') {
       navigation.setParams({
         groupId: item.id,
@@ -1880,6 +1896,15 @@ const validateExpense = () => {
         friendId: undefined,
         friendName: undefined
       });
+      
+      // We need to update our local state variables immediately for the fetch functions to work
+      groupId = item.id;
+      groupName = item.name;
+      friendId = undefined;
+      friendName = undefined;
+      
+      // Reload members for the new group
+      fetchGroupMembers();
     } else {
       navigation.setParams({
         groupId: undefined,
@@ -1887,17 +1912,19 @@ const validateExpense = () => {
         friendId: item.id,
         friendName: item.name
       });
+      
+      // Update local state variables
+      groupId = undefined;
+      groupName = undefined;
+      friendId = item.id;
+      friendName = item.name;
+      
+      // Load friend info
+      setupFriendExpense();
     }
     
     // Close the dropdown
     setShowGroupDropdown(false);
-    
-    // Reload members based on the new selection
-    if (item.type === 'group') {
-      fetchGroupMembers();
-    } else {
-      setupFriendExpense();
-    }
   };
   
   const renderCustomSplitModal = () => (
@@ -2521,13 +2548,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#eee'
   },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  infoButton: {
-    marginRight: 10,
-  },
   modalTitle: {
     fontSize: 18,
     fontWeight: '600',
@@ -2924,5 +2944,13 @@ const styles = StyleSheet.create({
     color: '#999',
     marginTop: 8,
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  infoButton: {
+    marginRight: 10,
+    padding: 4
+  }
 });
 export default AddExpenseScreen;

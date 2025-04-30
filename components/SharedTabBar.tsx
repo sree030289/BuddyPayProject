@@ -46,14 +46,14 @@ const SharedTabBar: React.FC<SharedTabBarProps> = ({ activeTab }) => {
         </Text>
       </TouchableOpacity>
 
-      <View style={styles.centerButtonContainer}>
+      {/* <View style={styles.centerButtonContainer}>
   <TouchableOpacity 
     style={styles.centerButton}
     onPress={() => navigation.navigate('AddExpenseScreen')}
   >
     <Icon name="add" size={24} color="#fff" />
   </TouchableOpacity>
-</View>
+</View> */}
       <TouchableOpacity
         style={[styles.tabItem, activeTab === 'Activity' && styles.activeTabItem]}
         onPress={() => navigateTo('Activity')}

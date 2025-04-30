@@ -64,7 +64,6 @@ const FriendDashboardScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, 'FriendsDashboardScreen'>>();
   
-  
   // Get parameters from route
   const { friendId, friendName } = route.params;
   
@@ -277,68 +276,69 @@ const fetchFriendData = async () => {
     }
     
     console.log(`After thorough check, found ${sharedGroupsData.length} shared groups with ${friendName}`);
-      
-      // Also check the expenses directly between the user and friend
-      const expensesRef = collection(db, 'users', userPhone, 'friends', friendId, 'expenses');
-      const expensesQuery = query(expensesRef, orderBy('createdAt', 'desc'));
-      const expensesSnapshot = await getDocs(expensesQuery);
-      
-      const directExpensesList: Expense[] = [];
-      
-      if (!expensesSnapshot.empty) {
-        // Get all direct expenses
-        expensesSnapshot.docs.forEach((expenseDoc) => {
-          const expenseData = expenseDoc.data() as Expense;
-          directExpensesList.push({
-            ...expenseData,
-            id: expenseDoc.id  // This will override any existing id in the data
-          });
-          
-          // Calculate amount based on who paid
-          if (expenseData.paidById === user.uid) {
-            directExpenseTotal += expenseData.amount; // User paid, so friend owes
-          } else {
-            directExpenseTotal -= expenseData.amount; // Friend paid, so user owes
-          }
-        });
     
-        // Store direct expenses
-        setDirectExpenses(directExpensesList);
+    // Also check the expenses directly between the user and friend
+    const expensesRef = collection(db, 'users', userPhone, 'friends', friendId, 'expenses');
+    const expensesQuery = query(expensesRef, orderBy('createdAt', 'desc'));
+    const expensesSnapshot = await getDocs(expensesQuery);
+    
+    const directExpensesList: Expense[] = [];
+    let directExpenseTotal = 0; // Initialize the missing variable
+    
+    if (!expensesSnapshot.empty) {
+      // Get all direct expenses
+      expensesSnapshot.docs.forEach((expenseDoc) => {
+        const expenseData = expenseDoc.data() as Expense;
+        directExpensesList.push({
+          ...expenseData,
+          id: expenseDoc.id  // This will override any existing id in the data
+        });
         
-        if (directExpensesList.length > 0) {
-          // Only add if there are expenses
-          sharedGroupsData.push({
-            id: 'direct-expenses',
-            name: 'Direct Expenses',
-            type: 'direct',
-            amount: Math.abs(directExpenseTotal),
-            date: directExpensesList.length > 0 ? 
-              formatFirestoreDate(directExpensesList[0].createdAt) : 
-              'Recent',
-            members: 2
-          });
+        // Calculate amount based on who paid
+        if (expenseData.paidById === user.uid) {
+          directExpenseTotal += expenseData.amount; // User paid, so friend owes
+        } else {
+          directExpenseTotal -= expenseData.amount; // Friend paid, so user owes
         }
+      });
+  
+      // Store direct expenses
+      setDirectExpenses(directExpensesList);
+      
+      if (directExpensesList.length > 0) {
+        // Only add if there are expenses
+        sharedGroupsData.push({
+          id: 'direct-expenses',
+          name: 'Direct Expenses',
+          type: 'direct',
+          amount: Math.abs(directExpenseTotal),
+          date: directExpensesList.length > 0 ? 
+            formatFirestoreDate(directExpensesList[0].createdAt) : 
+            'Recent',
+          members: 2
+        });
       }
+    }
+    
+    // Sort shared groups by amount descending
+    sharedGroupsData.sort((a, b) => b.amount - a.amount);
+    
+    setSharedGroups(sharedGroupsData);
+
+    console.log(`Final shared groups data: ${sharedGroupsData.length} groups found`);
+    if (sharedGroupsData.length > 0) {
+      console.log('Setting shared groups state with:', JSON.stringify(sharedGroupsData));
       
       // Sort shared groups by amount descending
       sharedGroupsData.sort((a, b) => b.amount - a.amount);
       
-      setSharedGroups(sharedGroupsData);
-
-      console.log(`Final shared groups data: ${sharedGroupsData.length} groups found`);
-if (sharedGroupsData.length > 0) {
-  console.log('Setting shared groups state with:', JSON.stringify(sharedGroupsData));
-  
-  // Sort shared groups by amount descending
-  sharedGroupsData.sort((a, b) => b.amount - a.amount);
-  
-  // Ensure state update
-  setSharedGroups([...sharedGroupsData]);
-} else {
-  console.log('No shared groups found to display');
-  // Set empty array to trigger empty state
-  setSharedGroups([]);
-}
+      // Ensure state update
+      setSharedGroups([...sharedGroupsData]);
+    } else {
+      console.log('No shared groups found to display');
+      // Set empty array to trigger empty state
+      setSharedGroups([]);
+    }
     
   } catch (error) {
     console.error('Error fetching friend data:', error);
@@ -346,6 +346,16 @@ if (sharedGroupsData.length > 0) {
   } finally {
     setLoading(false);
     setRefreshing(false);
+  }
+};
+
+const getOweText = () => {
+  if (totalOwed === 0) {
+    return 'All settled up';
+  } else if (totalOwed > 0) {
+    return `${friendName} owes you ₹${totalOwed}`;
+  } else {
+    return `You owe ${friendName} ₹${Math.abs(totalOwed)}`;
   }
 };
 
@@ -432,6 +442,20 @@ if (sharedGroupsData.length > 0) {
   }
 
   const renderSharedGroupsSection = () => {
+    // Add this at the top to show information about shared groups
+    const renderGroupsInfo = () => {
+      if (sharedGroups.length > 1) {
+        return (
+          <View style={styles.groupsInfoContainer}>
+            <Text style={styles.groupsInfoText}>
+              In {sharedGroups.length} shared groups
+            </Text>
+          </View>
+        );
+      }
+      return null;
+    };
+  
     if (loading && !refreshing) {
       return (
         <View style={styles.loadingGroupsContainer}>
@@ -456,12 +480,6 @@ if (sharedGroupsData.length > 0) {
       );
     }
     
-    // Explicitly log the shared groups for debugging
-    console.log(`Rendering shared groups section. Groups count: ${sharedGroups.length}`);
-    sharedGroups.forEach((group, index) => {
-      console.log(`Group ${index}: ${group.name}, ID: ${group.id}`);
-    });
-    
     if (sharedGroups.length === 0) {
       return (
         <View style={styles.emptyStateContainer}>
@@ -483,74 +501,77 @@ if (sharedGroupsData.length > 0) {
     }
     
     return (
-      <FlatList
-        data={sharedGroups}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <TouchableOpacity 
-            style={styles.transactionItem}
-            onPress={() => handleGroupPress(item)}
-          >
-            <View style={styles.groupIconContainer}>
-              <Icon 
-                name={item.id === 'direct-expenses' ? "person-outline" : getGroupIcon(item.name) as any} 
-                size={24} 
-                color="#333" 
-                style={styles.groupIcon} 
-              />
-            </View>
-            
-            <View style={styles.transactionDetails}>
-              <View style={styles.groupNameRow}>
-                <Text style={styles.transactionTitle}>{item.name}</Text>
-                {item.members && item.members > 2 && (
-                  <View style={styles.memberCountContainer}>
-                    <Icon name="people-outline" size={14} color="#757575" />
-                    <Text style={styles.memberCountText}>{item.members}</Text>
-                  </View>
-                )}
+      <>
+        {renderGroupsInfo()}
+        <FlatList
+          data={sharedGroups}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <TouchableOpacity 
+              style={styles.transactionItem}
+              onPress={() => handleGroupPress(item)}
+            >
+              <View style={styles.groupIconContainer}>
+                <Icon 
+                  name={item.id === 'direct-expenses' ? "person-outline" : getGroupIcon(item.name) as any} 
+                  size={24} 
+                  color="#333" 
+                  style={styles.groupIcon} 
+                />
               </View>
-              <Text style={styles.transactionSubtitle}>
-                {item.date}
-              </Text>
-            </View>
-            
-            <View style={styles.amountContainer}>
-              <Text style={styles.borrowedText}>
-                {totalOwed >= 0 ? 'you lent' : 'you borrowed'}
-              </Text>
-              <Text style={styles.amountText}>₹{item.amount}</Text>
-            </View>
-          </TouchableOpacity>
-        )}
-        refreshing={refreshing}
-        onRefresh={handleRefresh}
-      />
+              
+              <View style={styles.transactionDetails}>
+                <View style={styles.groupNameRow}>
+                  <Text style={styles.transactionTitle}>{item.name}</Text>
+                  {item.members && item.members > 2 && (
+                    <View style={styles.memberCountContainer}>
+                      <Icon name="people-outline" size={14} color="#757575" />
+                      <Text style={styles.memberCountText}>{item.members}</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.transactionSubtitle}>
+                  {item.date}
+                </Text>
+              </View>
+              
+              <View style={styles.amountContainer}>
+                <Text style={styles.borrowedText}>
+                  {totalOwed >= 0 ? `${friendName} owes` : 'you owe'}
+                </Text>
+                <Text style={styles.amountText}>₹{item.amount}</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+        />
+      </>
     );
   };
   return (
     <SafeAreaView style={{flex: 1, backgroundColor: '#0A6EFF'}}>
       <View style={styles.container}>
-      {/* Blue header */}
-      <View style={[styles.header, Platform.OS === 'android' && { paddingTop: STATUSBAR_HEIGHT + 10 }]}>
-        <View style={styles.topBar}>
-          <TouchableOpacity 
-            style={styles.iconButton} 
-            onPress={() => navigation.goBack()}
-          >
-            <Icon name="arrow-back" size={24} color="#fff" />
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.iconButton} 
-            onPress={() => navigation.navigate('FriendSettingsScreen', { 
-              friendId: friendId,
-              friendName: friendName,
-              email: route.params.email || ''
-            })}
-          >
-            <Icon name="settings-outline" size={24} color="#fff" />
-          </TouchableOpacity>
-        </View>
+        {/* Blue header */}
+        <View style={[styles.header, Platform.OS === 'android' && { paddingTop: STATUSBAR_HEIGHT + 10 }]}>
+          <View style={styles.topBar}>
+            <TouchableOpacity 
+              style={styles.iconButton} 
+              onPress={() => navigation.goBack()}
+            >
+              <Icon name="arrow-back" size={24} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.iconButton} 
+              onPress={() => navigation.navigate('FriendSettingsScreen', { 
+                friendId: friendId,
+                friendName: friendName,
+                email: route.params.email || ''
+              })}
+            >
+              <Icon name="settings-outline" size={24} color="#fff" />
+            </TouchableOpacity>
+          </View>
         
         {/* Profile section with avatar */}
         <View style={styles.profileSection}>
@@ -559,14 +580,12 @@ if (sharedGroupsData.length > 0) {
           </View>
           <Text style={styles.friendName}>{friendName}</Text>
           <Text style={styles.oweText}>
-            {totalOwed === 0 ? 'All settled up' : 
-             totalOwed > 0 ? `${friendName} owes you ₹${totalOwed}` : 
-             `You owe ${friendName} ₹${Math.abs(totalOwed)}`}
+            {getOweText()}
           </Text>
         </View>
       </View>
 
-      {/* Action buttons with icons */}
+      {/* Action buttons with icons - moved outside header */}
       <View style={styles.actionContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actionsRow}>
           <TouchableOpacity style={styles.actionBtn} onPress={handleButtonClick}>
@@ -591,6 +610,12 @@ if (sharedGroupsData.length > 0) {
         </ScrollView>
       </View>
 
+      {/* Shared Groups List */}
+      <View style={styles.transactionsContainer}>
+        <Text style={styles.sectionHeader}>Shared Groups</Text>
+        {renderSharedGroupsSection()}
+      </View>
+
       {/* Floating Action Button */}
       <TouchableOpacity 
         style={styles.floatingActionButton}
@@ -601,21 +626,35 @@ if (sharedGroupsData.length > 0) {
         <Icon name="add" size={30} color="#fff" />
       </TouchableOpacity>
 
-      {/* Shared Groups List */}
-      <View style={styles.transactionsContainer}>
-        <Text style={styles.sectionHeader}>Shared Groups</Text>
-        {renderSharedGroupsSection()}
+      {/* Tab Bar placed at the bottom */}
+      <View style={styles.tabBarContainer}>
+        <SharedTabBar activeTab="Friends" />
       </View>
-
-      {/* Use SharedTabBar instead of custom tab bar */}
-      <SharedTabBar activeTab="Friends" />
-      </View>
-    </SafeAreaView>
-  );
+    </View>
+  </SafeAreaView>
+);
 };
 
 // Keep existing styles
 const styles = StyleSheet.create({
+  groupsInfoContainer: {
+    backgroundColor: '#E3F2FD',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 10
+  },
+  groupsInfoText: {
+    fontSize: 14,
+    color: '#0A6EFF',
+    fontWeight: '500',
+    textAlign: 'center'
+  },
+  tabBarContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0
+  },
   container: {
     flex: 1,
     backgroundColor: '#fff'
@@ -641,11 +680,11 @@ const styles = StyleSheet.create({
     marginTop: 10
   },
   header: {
-    backgroundColor: '#0A6EFF', // Bright blue as shown in the screenshot
+    backgroundColor: '#0A6EFF',
     paddingTop: Platform.OS === 'android' ? 20 : 10,
-    paddingBottom: 30,
-    borderBottomLeftRadius: 35,
-    borderBottomRightRadius: 35
+    paddingBottom: 20, // Reduced padding
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30
   },
   topBar: {
     flexDirection: 'row',
@@ -684,9 +723,6 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.9)',
     marginTop: 4
   },
-  actionContainer: {
-    marginTop: 15
-  },
   actionsRow: {
     paddingVertical: 10,
     paddingHorizontal: 15,
@@ -716,9 +752,13 @@ const styles = StyleSheet.create({
   },
   transactionsContainer: {
     flex: 1,
-    marginTop: 15,
+    marginTop: 10,
     paddingHorizontal: 15,
-    paddingBottom: 70 // Add space for tab bar
+    paddingBottom: 70 // Space for tab bar
+  },
+  actionContainer: {
+    marginTop: 10, // Reduced margin
+    marginBottom: 5
   },
   sectionHeader: {
     fontSize: 18,

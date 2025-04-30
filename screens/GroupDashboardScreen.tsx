@@ -396,10 +396,11 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
   };
 
   const handleViewMember = (member: GroupMember) => {
-    // Only navigate to friend settings if this isn't the current user
-    if (member.id !== user?.uid) {
-      navigation.navigate('FriendSettingsScreen', { 
-        friendId: member.id,
+    // Only navigate if this isn't the current user
+    if (member.id !== user?.uid && member.uid !== user?.uid) {
+      // Navigate to FriendDashboardScreen instead of FriendSettingsScreen
+      navigation.navigate('FriendsDashboardScreen', { 
+        friendId: member.id || member.uid,
         friendName: member.name,
         email: member.email
       });
@@ -508,7 +509,10 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
 
   const renderMemberItem = ({ item }: { item: GroupMember }) => {
     const isCurrentUser = item.id === user?.uid || item.uid === user?.uid;
-    const balance = item.balance || currentMemberBalances[item.id] || currentMemberBalances[item.uid] || 0;
+    const balance = item.balance || 
+      (item.id ? currentMemberBalances[item.id] : 0) || 
+      (item.uid ? currentMemberBalances[item.uid] : 0) || 
+      0;
     
     return (
       <View style={styles.memberCard}>
@@ -564,7 +568,8 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
             style={styles.memberViewButton}
             onPress={() => handleViewMember(item)}
           >
-            <Text style={styles.memberViewButtonText}>View</Text>
+            <Icon name="person" size={16} color="#0A6EFF" style={styles.memberViewIcon} />
+            <Text style={styles.memberViewButtonText}>View Profile</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -648,7 +653,10 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
           </View>
           
           {balanceSummaries.length === 0 ? (
-            <Text style={styles.balanceSummaryEmptyText}>Everyone is settled up!</Text>
+            <View style={styles.balanceSummaryEmptyContainer}>
+              <Icon name="checkmark-circle" size={40} color="#4CAF50" />
+              <Text style={styles.balanceSummaryEmptyText}>Everyone is settled up!</Text>
+            </View>
           ) : (
             <FlatList
               data={balanceSummaries}
@@ -732,78 +740,69 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
       
       {/* Balance Card (Overlapping with header) */}
       <View style={styles.balanceCardContainer}>
-        <View style={styles.balanceCard}>
-          <View style={styles.balanceCardContent}>
-            <TouchableOpacity 
-              style={styles.balanceCardLeft}
-              onPress={() => setShowBalanceSummaryModal(true)}
-            >
-              {balanceSummaries.length > 0 ? (
-                <>
-                  <Text style={styles.balanceLabel}>
-                    {totalAmount === 0 ? 'All Settled Up' : 
-                    totalAmount > 0 ? 'You are owed' : 'You owe'}
-                  </Text>
-                  <Text style={[
-                    styles.balanceValue,
-                    { color: totalAmount > 0 ? '#4CAF50' : '#F44336' }
-                  ]}>
-                    ₹{Math.abs(totalAmount)}
-                  </Text>
-                  {balanceSummaries.length > 1 && (
-                    <View style={styles.balanceCountBadge}>
-                      <Text style={styles.balanceCountText}>+{balanceSummaries.length - 1}</Text>
-                    </View>
-                  )}
-                </>
-              ) : (
-                <View style={styles.settledRow}>
-                  <Icon name="checkmark-circle" size={16} color="#4CAF50" />
-                  <Text style={styles.settledText}>All settled</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.settleButton}
-              onPress={handleSettleUp}
-            >
-              <Text style={styles.settleButtonText}>Settle up</Text>
-            </TouchableOpacity>
+      <View style={styles.balanceCard}>
+  <View style={styles.balanceCardContent}>
+    <TouchableOpacity 
+      style={styles.balanceCardLeft}
+      onPress={() => setShowBalanceSummaryModal(true)}
+    >
+      {balanceSummaries.length > 0 ? (
+        <>
+          <Text style={styles.balanceLabel}>
+            {totalAmount === 0 ? 'All Settled Up' : 
+             totalAmount > 0 ? 'You are owed' : 'You owe'}
+          </Text>
+          <Text style={[
+            styles.balanceValue,
+            { color: totalAmount > 0 ? '#4CAF50' : '#F44336' }
+          ]}>
+            ₹{Math.abs(totalAmount)}
+          </Text>
+          {balanceSummaries.length > 1 && (
+            <Icon name="information-circle-outline" size={20} color="#0A6EFF" />
+          )}
+        </>
+      ) : (
+        <View style={styles.settledRow}>
+          <Icon name="checkmark-circle" size={16} color="#4CAF50" />
+          <Text style={styles.settledText}>All settled</Text>
+        </View>
+      )}
+    </TouchableOpacity>
           </View>
           
           {/* Mini spending visualization using real category data */}
           {categorySpending.length > 0 ? (
-            <>
-              <View style={styles.spendingGraph}>
-                {categorySpending.slice(0, 4).map((category, index) => (
-                  <View 
-                    key={index} 
-                    style={[
-                      styles.spendingBar, 
-                      { 
-                        width: `${category.percentage}%`, 
-                        height: 20 + Math.min(category.percentage, 30), 
-                        backgroundColor: category.color 
-                      }
-                    ]}
-                  />
-                ))}
-              </View>
-              <View style={styles.spendingLabels}>
-                {categorySpending.slice(0, 4).map((category, index) => (
-                  <Text key={index} style={styles.spendingLabel}>
-                    {category.category.charAt(0).toUpperCase() + category.category.slice(1, 4)}
-                  </Text>
-                ))}
-              </View>
-            </>
-          ) : (
-            <View style={styles.noSpendingContainer}>
-              <Text style={styles.noSpendingText}>No spending data yet</Text>
-            </View>
-          )}
-        </View>
+    <>
+      <View style={styles.spendingGraph}>
+        {categorySpending.slice(0, 4).map((category, index) => (
+          <View 
+            key={index} 
+            style={[
+              styles.spendingBar, 
+              { 
+                width: `${category.percentage}%`, 
+                height: 20 + Math.min(category.percentage, 30), 
+                backgroundColor: category.color 
+              }
+            ]}
+          />
+        ))}
+      </View>
+      <View style={styles.spendingLabels}>
+        {categorySpending.slice(0, 4).map((category, index) => (
+          <Text key={index} style={styles.spendingLabel}>
+            {category.category.charAt(0).toUpperCase() + category.category.slice(1, 4)}
+          </Text>
+        ))}
+      </View>
+    </>
+  ) : (
+    <View style={styles.noSpendingContainer}>
+      <Text style={styles.noSpendingText}>No spending data yet</Text>
+    </View>
+  )}
+</View>
       </View>
       
       {/* Tabs with sliding indicator */}
@@ -1061,6 +1060,7 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-start', // Changed from initial
   },
   balanceLabel: {
     fontSize: 14,
@@ -1209,13 +1209,6 @@ const styles = StyleSheet.create({
     width: '90%',
     maxHeight: '80%'
   },
-  balanceSummaryModalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    width: '90%',
-    maxHeight: '80%',
-    overflow: 'hidden'
-  },
   filterModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1276,34 +1269,47 @@ const styles = StyleSheet.create({
   },
   
   // Balance summary modal
+  balanceSummaryModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    width: '90%',
+    maxHeight: '80%',
+    overflow: 'hidden'
+  },
+  balanceSummaryEmptyContainer: {
+    alignItems: 'center',
+    padding: 30,
+  },
+  balanceSummaryEmptyText: {
+    fontSize: 16,
+    color: '#4CAF50',
+    textAlign: 'center',
+    marginTop: 10,
+    fontWeight: '500'
+  },
   balanceSummaryItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 12
+    padding: 16
   },
   balanceSummaryName: {
     fontSize: 16,
+    fontWeight: '500',
     color: '#333'
   },
   balanceSummaryAmount: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600'
   },
   balanceSummarySeparator: {
     height: 1,
     backgroundColor: '#eee'
   },
-  balanceSummaryEmptyText: {
-    fontSize: 16,
-    color: '#4CAF50',
-    textAlign: 'center',
-    padding: 20
-  },
   balanceSummaryCloseButton: {
     borderTopWidth: 1,
     borderTopColor: '#eee',
-    paddingVertical: 14,
+    paddingVertical: 16,
     alignItems: 'center'
   },
   balanceSummaryCloseButtonText: {
@@ -1610,7 +1616,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.16,
     shadowRadius: 6,
     elevation: 6
+  },
+  memberViewIcon: {
+    marginRight: 6
   }
+  
 });
 
 export default GroupDashboardScreen;
