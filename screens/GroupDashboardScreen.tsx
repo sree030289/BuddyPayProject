@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   View, 
@@ -11,7 +10,8 @@ import {
   Alert,
   Image,
   ScrollView,
-  BackHandler
+  BackHandler,
+  Modal
 } from 'react-native';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -23,7 +23,6 @@ import SharedTabBar from '../components/SharedTabBar';
 import { useAuth } from '../components/AuthContext';
 
 // Define the proper types for the component props
-// Update the RootStackParamList type to include refreshGroupsOnReturn
 type GroupDashboardScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'GroupDashboardScreen'>;
   route: RouteProp<{
@@ -46,8 +45,12 @@ interface Transaction {
   amount: number;
   date: string;
   paidBy: string;
+  paidById?: string;
   splitWith: string[];
   type: string;
+  category?: string;
+  timestamp?: any;
+  notes?: string;
 }
 
 // Define member interface
@@ -59,6 +62,7 @@ interface GroupMember {
   image?: string;
   balance: number;
   isAdmin?: boolean;
+  uid?: string; // Adding this to match the Firebase data structure
 }
 
 // Define group data interface
@@ -74,6 +78,14 @@ interface GroupDataType {
   [key: string]: any; // Allow for additional properties
 }
 
+// Define category spending interface for the timeline visualization
+interface CategorySpending {
+  category: string;
+  amount: number;
+  percentage: number;
+  color: string;
+}
+
 // Helper to group transactions by date
 const groupTransactionsByDate = (transactions: Transaction[]) => {
   const grouped: Record<string, Transaction[]> = {};
@@ -87,13 +99,32 @@ const groupTransactionsByDate = (transactions: Transaction[]) => {
   });
   
   // Convert to array format for FlatList
-  return Object.keys(grouped).map(date => ({
-    date,
-    data: grouped[date]
-  }));
+  return Object.keys(grouped)
+    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime()) // Sort from newest to oldest
+    .map(date => ({
+      date,
+      data: grouped[date]
+    }));
 };
 
-// Note the explicit return type of JSX.Element
+// Get color for category
+const getCategoryColor = (category: string) => {
+  const categoryColors: Record<string, string> = {
+    food: '#4A90E2',
+    transport: '#50C878',
+    shopping: '#FF6B81',
+    entertainment: '#9D65C9',
+    home: '#FF9642',
+    bills: '#8A2BE2',
+    health: '#4CAF50',
+    travel: '#009688',
+    education: '#607D8B',
+    other: '#E91E63'
+  };
+  
+  return categoryColors[category] || '#607D8B'; // Default color for unknown categories
+};
+
 const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps): JSX.Element => {
   // Get user from AuthContext
   const { user } = useAuth();
@@ -109,6 +140,13 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
   const [groupedTransactions, setGroupedTransactions] = useState<{date: string, data: Transaction[]}[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'expenses' | 'members'>('expenses');
+  const [categorySpending, setCategorySpending] = useState<CategorySpending[]>([]);
+  const [filterMemberId, setFilterMemberId] = useState<string | null>(null); // Member filter for expenses
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
+  const [showBalanceSummaryModal, setShowBalanceSummaryModal] = useState(false);
+  const [balanceSummaries, setBalanceSummaries] = useState<{name: string, amount: number}[]>([]);
+  const [currentMemberBalances, setCurrentMemberBalances] = useState<Record<string, number>>({});
 
   // Handler for back button to handle 'refreshGroupsOnReturn' flag
   useFocusEffect(
@@ -156,9 +194,55 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
   // Group transactions whenever transactions change
   useEffect(() => {
     if (transactions.length > 0) {
-      setGroupedTransactions(groupTransactionsByDate(transactions));
+      // Start with all transactions
+      let transactionsToShow = [...transactions];
+      
+      // Apply filter if set
+      if (filterMemberId) {
+        transactionsToShow = transactions.filter(t => 
+          t.paidById === filterMemberId || 
+          (t.splitWith && t.splitWith.includes(filterMemberId))
+        );
+      }
+      
+      // Set filtered transactions
+      setFilteredTransactions(transactionsToShow);
+      
+      // Group by date
+      setGroupedTransactions(groupTransactionsByDate(transactionsToShow));
+      
+      // Calculate spending by category
+      calculateCategorySpending(transactions);
     }
-  }, [transactions]);
+  }, [transactions, filterMemberId]);
+
+  const calculateCategorySpending = (transactions: Transaction[]) => {
+    // Get total spending by category
+    const categoryTotals: Record<string, number> = {};
+    let totalSpending = 0;
+    
+    transactions.forEach(transaction => {
+      const category = transaction.category || 'other';
+      categoryTotals[category] = (categoryTotals[category] || 0) + transaction.amount;
+      totalSpending += transaction.amount;
+    });
+    
+    // Convert to array with percentages
+    const spending: CategorySpending[] = Object.keys(categoryTotals).map(category => {
+      const amount = categoryTotals[category];
+      return {
+        category,
+        amount,
+        percentage: totalSpending > 0 ? (amount / totalSpending) * 100 : 0,
+        color: getCategoryColor(category)
+      };
+    });
+    
+    // Sort by amount descending
+    spending.sort((a, b) => b.amount - a.amount);
+    
+    setCategorySpending(spending);
+  };
 
   const fetchGroupData = async () => {
     if (!user) return; // Safety check
@@ -180,17 +264,38 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
         // Get members directly from the group data if available
         if (data.members && Array.isArray(data.members)) {
           // Convert the members array to the format expected by our component
-          const formattedMembers = data.members.map((member: any) => ({
-            id: member.uid || member.id || Date.now().toString(),
-            name: member.name || 'Unknown',
-            email: member.email || undefined,
-            phone: member.phone || undefined,
-            balance: member.balance || 0,
-            isAdmin: member.isAdmin || false
-          }));
+          const formattedMembers = data.members.map((member: any) => {
+            // Store member balances in a lookup for fast access
+            setCurrentMemberBalances(prev => ({
+              ...prev,
+              [member.uid]: member.balance || 0
+            }));
+            
+            return {
+              id: member.uid || member.id || Date.now().toString(),
+              uid: member.uid || member.id,
+              name: member.name || 'Unknown',
+              email: member.email || undefined,
+              phone: member.phone || undefined,
+              balance: member.balance || 0,
+              isAdmin: member.isAdmin || false
+            };
+          });
           
           setMembers(formattedMembers);
           console.log(`Loaded ${formattedMembers.length} members from group data`);
+          
+          // Create balance summaries for UI display
+          const summaries = formattedMembers
+            .filter(member => member.balance !== 0)
+            .map(member => ({
+              name: member.name,
+              amount: member.balance
+            }))
+            .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+          
+          setBalanceSummaries(summaries);
+          
         } else {
           // Fallback to fetching from subcollection if members not in group document
           try {
@@ -204,6 +309,18 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
               })) as GroupMember[];
               setMembers(membersData);
               console.log(`Loaded ${membersData.length} members from subcollection`);
+              
+              // Create balance summaries
+              const summaries = membersData
+                .filter(member => member.balance !== 0)
+                .map(member => ({
+                  name: member.name,
+                  amount: member.balance
+                }))
+                .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+              
+              setBalanceSummaries(summaries);
+              
             } else {
               console.log('No members found in subcollection');
             }
@@ -240,8 +357,11 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
   };
 
   const handleAddExpense = () => {
-    // Navigate to add expense screen
-    Alert.alert('Add Expense', 'This feature is coming soon!');
+    // Navigate to add expense screen with group parameters
+    navigation.navigate('AddExpenseScreen', {
+      groupId,
+      groupName
+    });
   };
 
   const handleAddMember = () => {
@@ -286,6 +406,12 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
     }
   };
 
+  // Handle member filter selection
+  const handleSelectFilter = (memberId: string | null) => {
+    setFilterMemberId(memberId);
+    setShowFilterModal(false);
+  };
+
   // Get initial for member
   const getMemberInitial = (name: string = '') => {
     return name.charAt(0).toUpperCase();
@@ -314,8 +440,10 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
   };
 
   const renderTransactionItem = ({ item }: { item: Transaction }) => {
-    const isPaid = item.paidBy === 'You' || item.paidBy === user?.displayName;
+    const isPaid = item.paidById === user?.uid;
     const memberName = isPaid ? 'You' : item.paidBy;
+    const category = item.category || 'other';
+    const categoryColor = getCategoryColor(category);
     
     return (
       <View style={styles.transactionContainer}>
@@ -323,7 +451,7 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
         <View style={styles.timelineLine}></View>
         
         {/* Timeline dot */}
-        <View style={[styles.timelineDot, { backgroundColor: isPaid ? '#50C878' : '#4A90E2' }]}></View>
+        <View style={[styles.timelineDot, { backgroundColor: categoryColor }]}></View>
         
         {/* Expense card */}
         <View style={styles.timelineCard}>
@@ -354,14 +482,18 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
           </View>
           
           <View style={styles.transactionFooter}>
-            <View style={styles.transactionTag}>
-              <Text style={styles.transactionTagText}>
-                {item.type === 'expense' ? 'Expense' : 'Payment'}
+            <View style={[styles.transactionTag, { backgroundColor: `${categoryColor}22` }]}>
+              <Text style={[styles.transactionTagText, { color: categoryColor }]}>
+                {category.charAt(0).toUpperCase() + category.slice(1)}
               </Text>
             </View>
-            <TouchableOpacity>
-              <Text style={styles.transactionDetailsButton}>Details</Text>
-            </TouchableOpacity>
+            {item.notes && (
+              <TouchableOpacity onPress={() => {
+                Alert.alert('Notes', item.notes || 'No additional notes');
+              }}>
+                <Text style={styles.transactionDetailsButton}>View Notes</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </View>
@@ -375,7 +507,8 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
   );
 
   const renderMemberItem = ({ item }: { item: GroupMember }) => {
-    const isCurrentUser = item.id === user?.uid;
+    const isCurrentUser = item.id === user?.uid || item.uid === user?.uid;
+    const balance = item.balance || currentMemberBalances[item.id] || currentMemberBalances[item.uid] || 0;
     
     return (
       <View style={styles.memberCard}>
@@ -396,18 +529,18 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
               <Text style={[
                 styles.memberBalance,
                 { 
-                  color: item.balance > 0 ? '#4CAF50' : 
-                         item.balance < 0 ? '#F44336' : 
+                  color: balance > 0 ? '#4CAF50' : 
+                         balance < 0 ? '#F44336' : 
                          '#757575' 
                 }
               ]}>
-                {item.balance === 0 ? 
+                {balance === 0 ? 
                   'Settled' : 
-                  `₹${Math.abs(item.balance)}`}
+                  `₹${Math.abs(balance).toFixed(0)}`}
               </Text>
               <Text style={styles.memberBalanceLabel}>
-                {item.balance > 0 ? 'gets back' : 
-                 item.balance < 0 ? 'owes' : ''}
+                {balance > 0 ? 'gets back' : 
+                 balance < 0 ? 'owes' : ''}
               </Text>
             </View>
           </View>
@@ -417,9 +550,9 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
             <View style={[
               styles.balanceBarFill, 
               { 
-                width: `${Math.min(Math.abs(item.balance) / 10, 100)}%`,
-                backgroundColor: item.balance > 0 ? '#4CAF50' : 
-                                item.balance < 0 ? '#F44336' : 
+                width: `${Math.min(Math.abs(balance) / 10, 100)}%`,
+                backgroundColor: balance > 0 ? '#4CAF50' : 
+                                balance < 0 ? '#F44336' : 
                                 '#E0E0E0'
               }
             ]}></View>
@@ -437,6 +570,115 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
       </View>
     );
   };
+  
+  // Render filter modal
+  const renderFilterModal = () => (
+    <Modal
+      visible={showFilterModal}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={() => setShowFilterModal(false)}
+    >
+      <TouchableOpacity 
+        style={styles.filterModalOverlay} 
+        activeOpacity={1}
+        onPress={() => setShowFilterModal(false)}
+      >
+        <View style={styles.filterModalContent}>
+          <View style={styles.filterModalHeader}>
+            <Text style={styles.filterModalTitle}>Filter Expenses</Text>
+            <TouchableOpacity onPress={() => setShowFilterModal(false)}>
+              <Icon name="close" size={24} color="#333" />
+            </TouchableOpacity>
+          </View>
+          
+          <TouchableOpacity
+            style={[styles.filterOption, !filterMemberId && styles.selectedFilterOption]}
+            onPress={() => handleSelectFilter(null)}
+          >
+            <Text style={styles.filterOptionText}>All Expenses</Text>
+            {!filterMemberId && <Icon name="checkmark" size={20} color="#0A6EFF" />}
+          </TouchableOpacity>
+          
+          <View style={styles.filterSeparator} />
+          
+          <Text style={styles.filterSectionTitle}>By Member</Text>
+          
+          {members.map((member) => (
+            <TouchableOpacity
+              key={member.id}
+              style={[styles.filterOption, filterMemberId === member.id && styles.selectedFilterOption]}
+              onPress={() => handleSelectFilter(member.id)}
+            >
+              <View style={styles.filterMemberRow}>
+                <View style={[styles.filterMemberIcon, {backgroundColor: getMemberColor(member.name)}]}>
+                  <Text style={styles.filterMemberInitial}>{getMemberInitial(member.name)}</Text>
+                </View>
+                <Text style={styles.filterOptionText}>
+                  {member.id === user?.uid ? "Your expenses" : `${member.name}'s expenses`}
+                </Text>
+              </View>
+              {filterMemberId === member.id && <Icon name="checkmark" size={20} color="#0A6EFF" />}
+            </TouchableOpacity>
+          ))}
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+  
+  // Render balance summary modal
+  const renderBalanceSummaryModal = () => (
+    <Modal
+      visible={showBalanceSummaryModal}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={() => setShowBalanceSummaryModal(false)}
+    >
+      <TouchableOpacity 
+        style={styles.filterModalOverlay} 
+        activeOpacity={1}
+        onPress={() => setShowBalanceSummaryModal(false)}
+      >
+        <View style={styles.balanceSummaryModalContent}>
+          <View style={styles.filterModalHeader}>
+            <Text style={styles.filterModalTitle}>Balance Summary</Text>
+            <TouchableOpacity onPress={() => setShowBalanceSummaryModal(false)}>
+              <Icon name="close" size={24} color="#333" />
+            </TouchableOpacity>
+          </View>
+          
+          {balanceSummaries.length === 0 ? (
+            <Text style={styles.balanceSummaryEmptyText}>Everyone is settled up!</Text>
+          ) : (
+            <FlatList
+              data={balanceSummaries}
+              keyExtractor={(item, index) => `balance-${index}`}
+              renderItem={({ item }) => (
+                <View style={styles.balanceSummaryItem}>
+                  <Text style={styles.balanceSummaryName}>{item.name}</Text>
+                  <Text style={[
+                    styles.balanceSummaryAmount, 
+                    { color: item.amount > 0 ? '#4CAF50' : '#F44336' }
+                  ]}>
+                    {item.amount > 0 ? `gets back ₹${item.amount.toFixed(0)}` : `owes ₹${Math.abs(item.amount).toFixed(0)}`}
+                  </Text>
+                </View>
+              )}
+              ItemSeparatorComponent={() => <View style={styles.balanceSummarySeparator} />}
+              contentContainerStyle={{ paddingVertical: 8 }}
+            />
+          )}
+          
+          <TouchableOpacity 
+            style={styles.balanceSummaryCloseButton}
+            onPress={() => setShowBalanceSummaryModal(false)}
+          >
+            <Text style={styles.balanceSummaryCloseButtonText}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
 
   if (loading) {
     return (
@@ -492,25 +734,35 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
       <View style={styles.balanceCardContainer}>
         <View style={styles.balanceCard}>
           <View style={styles.balanceCardContent}>
-            <View style={styles.balanceCardLeft}>
-              <Text style={styles.balanceLabel}>
-                {totalAmount === 0 ? 'All Settled Up' : 
-                totalAmount > 0 ? 'You are owed' : 'You owe'}
-              </Text>
-              {totalAmount !== 0 ? (
-                <Text style={[
-                  styles.balanceValue,
-                  { color: totalAmount > 0 ? '#4CAF50' : '#F44336' }
-                ]}>
-                  ₹{Math.abs(totalAmount)}
-                </Text>
+            <TouchableOpacity 
+              style={styles.balanceCardLeft}
+              onPress={() => setShowBalanceSummaryModal(true)}
+            >
+              {balanceSummaries.length > 0 ? (
+                <>
+                  <Text style={styles.balanceLabel}>
+                    {totalAmount === 0 ? 'All Settled Up' : 
+                    totalAmount > 0 ? 'You are owed' : 'You owe'}
+                  </Text>
+                  <Text style={[
+                    styles.balanceValue,
+                    { color: totalAmount > 0 ? '#4CAF50' : '#F44336' }
+                  ]}>
+                    ₹{Math.abs(totalAmount)}
+                  </Text>
+                  {balanceSummaries.length > 1 && (
+                    <View style={styles.balanceCountBadge}>
+                      <Text style={styles.balanceCountText}>+{balanceSummaries.length - 1}</Text>
+                    </View>
+                  )}
+                </>
               ) : (
                 <View style={styles.settledRow}>
                   <Icon name="checkmark-circle" size={16} color="#4CAF50" />
                   <Text style={styles.settledText}>All settled</Text>
                 </View>
               )}
-            </View>
+            </TouchableOpacity>
             
             <TouchableOpacity 
               style={styles.settleButton}
@@ -520,19 +772,37 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
             </TouchableOpacity>
           </View>
           
-          {/* Mini spending visualization */}
-          <View style={styles.spendingGraph}>
-            <View style={[styles.spendingBar, { width: '30%', height: 24, backgroundColor: '#4A90E2' }]}></View>
-            <View style={[styles.spendingBar, { width: '15%', height: 15, backgroundColor: '#50C878' }]}></View>
-            <View style={[styles.spendingBar, { width: '40%', height: 30, backgroundColor: '#9D65C9' }]}></View>
-            <View style={[styles.spendingBar, { width: '15%', height: 18, backgroundColor: '#FF9642' }]}></View>
-          </View>
-          <View style={styles.spendingLabels}>
-            <Text style={styles.spendingLabel}>Food</Text>
-            <Text style={styles.spendingLabel}>Transport</Text>
-            <Text style={styles.spendingLabel}>Stay</Text>
-            <Text style={styles.spendingLabel}>Others</Text>
-          </View>
+          {/* Mini spending visualization using real category data */}
+          {categorySpending.length > 0 ? (
+            <>
+              <View style={styles.spendingGraph}>
+                {categorySpending.slice(0, 4).map((category, index) => (
+                  <View 
+                    key={index} 
+                    style={[
+                      styles.spendingBar, 
+                      { 
+                        width: `${category.percentage}%`, 
+                        height: 20 + Math.min(category.percentage, 30), 
+                        backgroundColor: category.color 
+                      }
+                    ]}
+                  />
+                ))}
+              </View>
+              <View style={styles.spendingLabels}>
+                {categorySpending.slice(0, 4).map((category, index) => (
+                  <Text key={index} style={styles.spendingLabel}>
+                    {category.category.charAt(0).toUpperCase() + category.category.slice(1, 4)}
+                  </Text>
+                ))}
+              </View>
+            </>
+          ) : (
+            <View style={styles.noSpendingContainer}>
+              <Text style={styles.noSpendingText}>No spending data yet</Text>
+            </View>
+          )}
         </View>
       </View>
       
@@ -576,39 +846,67 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
       {/* Content Area */}
       <View style={styles.contentContainer}>
         {activeTab === 'expenses' ? (
-          transactions.length > 0 ? (
-            <FlatList
-              data={groupedTransactions}
-              renderItem={({ item }) => (
-                <>
-                  <View style={styles.dateHeader}>
-                    <Text style={styles.dateHeaderText}>{item.date}</Text>
-                  </View>
-                  {item.data.map(transaction => (
-                    <View key={transaction.id}>
-                      {renderTransactionItem({ item: transaction })}
-                    </View>
-                  ))}
-                </>
+          <>
+            {/* Filter button */}
+            <TouchableOpacity 
+              style={styles.filterButton}
+              onPress={() => setShowFilterModal(true)}
+            >
+              <Icon name={filterMemberId ? "filter" : "filter-outline"} size={18} color="#0A6EFF" />
+              <Text style={styles.filterButtonText}>
+                {filterMemberId ? "Filtered" : "Filter Expenses"}
+              </Text>
+              {filterMemberId && (
+                <TouchableOpacity 
+                  style={styles.filterClearButton}
+                  onPress={() => setFilterMemberId(null)}
+                >
+                  <Icon name="close-circle" size={16} color="#0A6EFF" />
+                </TouchableOpacity>
               )}
-              keyExtractor={(item) => item.date}
-              contentContainerStyle={styles.listContainer}
-              onRefresh={onRefresh}
-              refreshing={refreshing}
-            />
-          ) : (
-            <View style={styles.emptyStateContainer}>
-              <Icon name="receipt-outline" size={60} color="#ccc" />
-              <Text style={styles.emptyStateTitle}>No expenses yet</Text>
-              <Text style={styles.emptyStateSubtitle}>Add your first expense to start tracking</Text>
-              <TouchableOpacity 
-                style={styles.emptyStateButton}
-                onPress={handleAddExpense}
-              >
-                <Text style={styles.emptyStateButtonText}>Add an expense</Text>
-              </TouchableOpacity>
-            </View>
-          )
+            </TouchableOpacity>
+            
+            {filteredTransactions.length > 0 ? (
+              <FlatList
+                data={groupedTransactions}
+                renderItem={({ item }) => (
+                  <>
+                    <View style={styles.dateHeader}>
+                      <Text style={styles.dateHeaderText}>{item.date}</Text>
+                    </View>
+                    {item.data.map(transaction => (
+                      <View key={transaction.id}>
+                        {renderTransactionItem({ item: transaction })}
+                      </View>
+                    ))}
+                  </>
+                )}
+                keyExtractor={(item) => item.date}
+                contentContainerStyle={styles.listContainer}
+                onRefresh={onRefresh}
+                refreshing={refreshing}
+              />
+            ) : (
+              <View style={styles.emptyStateContainer}>
+                <Icon name="receipt-outline" size={60} color="#ccc" />
+                <Text style={styles.emptyStateTitle}>
+                  {filterMemberId ? "No filtered expenses found" : "No expenses yet"}
+                </Text>
+                <Text style={styles.emptyStateSubtitle}>
+                  {filterMemberId ? 
+                    "Try changing your filter or add new expenses" : 
+                    "Add your first expense to start tracking"
+                  }
+                </Text>
+                <TouchableOpacity 
+                  style={styles.emptyStateButton}
+                  onPress={handleAddExpense}
+                >
+                  <Text style={styles.emptyStateButtonText}>Add an expense</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </>
         ) : (
           members.length > 0 ? (
             <FlatList
@@ -645,7 +943,6 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
       </View>
       
       {/* Floating Action Button */}
-      // In GroupDashboardScreen.tsx
       <TouchableOpacity 
         style={styles.floatingActionButton}
         onPress={() => navigation.navigate('AddExpenseScreen', {
@@ -655,6 +952,10 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
       >
         <Icon name="add" size={30} color="#fff" />
       </TouchableOpacity>
+      
+      {/* Render modals */}
+      {renderFilterModal()}
+      {renderBalanceSummaryModal()}
       
       {/* Tab Bar - Using existing SharedTabBar */}
       <SharedTabBar activeTab="Groups" />
@@ -757,15 +1058,29 @@ const styles = StyleSheet.create({
     marginBottom: 16
   },
   balanceCardLeft: {
-    flex: 1
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   balanceLabel: {
     fontSize: 14,
     color: '#757575',
-    marginBottom: 4
+    marginRight: 4
   },
   balanceValue: {
-    fontSize: 24,
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginRight: 4
+  },
+  balanceCountBadge: {
+    backgroundColor: '#0A6EFF',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2
+  },
+  balanceCountText: {
+    color: '#fff',
+    fontSize: 10,
     fontWeight: 'bold'
   },
   settledRow: {
@@ -807,7 +1122,42 @@ const styles = StyleSheet.create({
   spendingLabel: {
     fontSize: 10,
     color: '#757575',
-    textAlign: 'center'
+    textAlign: 'center',
+    flex: 1
+  },
+  noSpendingContainer: {
+    height: 50,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  noSpendingText: {
+    color: '#888',
+    fontSize: 14
+  },
+  
+  // Filter button
+  filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#EDF4FF',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: '#D6E4FF'
+  },
+  filterButtonText: {
+    color: '#0A6EFF',
+    marginLeft: 4,
+    fontSize: 12,
+    fontWeight: '500'
+  },
+  filterClearButton: {
+    marginLeft: 4
   },
   
   // Tabs styles
@@ -842,6 +1192,124 @@ const styles = StyleSheet.create({
     height: 2,
     width: '50%',
     backgroundColor: '#0A6EFF'
+  },
+  
+  // Filter modal styles
+  filterModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20
+  },
+  filterModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    width: '90%',
+    maxHeight: '80%'
+  },
+  balanceSummaryModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    width: '90%',
+    maxHeight: '80%',
+    overflow: 'hidden'
+  },
+  filterModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee'
+  },
+  filterModalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333'
+  },
+  filterOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 4
+  },
+  selectedFilterOption: {
+    backgroundColor: '#f0f5ff',
+    borderRadius: 8
+  },
+  filterOptionText: {
+    fontSize: 16,
+    color: '#333'
+  },
+  filterSeparator: {
+    height: 1,
+    backgroundColor: '#eee',
+    marginVertical: 8
+  },
+  filterSectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+    marginTop: 4,
+    marginBottom: 8
+  },
+  filterMemberRow: {
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  filterMemberIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#0A6EFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8
+  },
+  filterMemberInitial: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold'
+  },
+  
+  // Balance summary modal
+  balanceSummaryItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12
+  },
+  balanceSummaryName: {
+    fontSize: 16,
+    color: '#333'
+  },
+  balanceSummaryAmount: {
+    fontSize: 14,
+    fontWeight: '600'
+  },
+  balanceSummarySeparator: {
+    height: 1,
+    backgroundColor: '#eee'
+  },
+  balanceSummaryEmptyText: {
+    fontSize: 16,
+    color: '#4CAF50',
+    textAlign: 'center',
+    padding: 20
+  },
+  balanceSummaryCloseButton: {
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    paddingVertical: 14,
+    alignItems: 'center'
+  },
+  balanceSummaryCloseButtonText: {
+    color: '#0A6EFF',
+    fontSize: 16,
+    fontWeight: '600'
   },
   
   // Timeline styles
@@ -955,7 +1423,7 @@ const styles = StyleSheet.create({
   },
   transactionTagText: {
     fontSize: 11,
-    color: '#757575'
+    fontWeight: '500'
   },
   transactionDetailsButton: {
     fontSize: 12,

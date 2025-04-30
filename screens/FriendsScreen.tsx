@@ -1,6 +1,6 @@
-// Updated FriendsScreen.tsx with TypeScript fixes
+// Updated FriendsScreen.tsx with TypeScript fixes and new features
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -24,7 +24,9 @@ import {
   collection,
   getDocs,
   query,
-  where
+  where,
+  getDoc,
+  doc
 } from 'firebase/firestore';
 import { useAuth } from '../components/AuthContext'; // Import useAuth hook
 
@@ -77,6 +79,8 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [totalBalance, setTotalBalance] = useState(0); // Track total balance across all friends
+  const [refreshing, setRefreshing] = useState(false);
 
   // Display toast/alert for status message
   React.useEffect(() => {
@@ -118,10 +122,12 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
       console.warn('No email available for user');
       setError('User email not found');
       setLoading(false);
+      setRefreshing(false);
       return;
     }
 
     setLoading(true);
+    setRefreshing(true);
     setError(null);
     console.log('Fetching for user email:', userEmail);
 
@@ -141,6 +147,7 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
           console.warn('Phone number not found for user');
           setError('Phone number not set in your profile');
           setLoading(false);
+          setRefreshing(false);
           return;
         }
 
@@ -158,22 +165,60 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
           console.log('Friend document:', doc.id, JSON.stringify(doc.data()));
           return {
             id: doc.id,
-            ...doc.data()
+            ...doc.data(),
+            // Set default status to "pending" if not specified
+            status: doc.data().status || "pending"
           };
         });
+        
+        // Calculate total balance across all friends
+        let totalOwed = 0;
+        
+        // Also calculate total from groups
+        try {
+          // Get all groups the user is part of
+          const groupsRef = collection(db, 'groups');
+          const groupsQuery = query(groupsRef, where('memberIds', 'array-contains', user.uid));
+          const groupsSnapshot = await getDocs(groupsQuery);
+          
+          // For each group, find the user's balance
+          for (const groupDoc of groupsSnapshot.docs) {
+            const groupData = groupDoc.data();
+            if (groupData.members && Array.isArray(groupData.members)) {
+              // Find the current user in the members array
+              const userMember = groupData.members.find((m: any) => m.uid === user.uid);
+              if (userMember && userMember.balance) {
+                // Add this balance to the total
+                totalOwed += userMember.balance;
+              }
+            }
+          }
+        } catch (groupError) {
+          console.error('Error calculating group balances:', groupError);
+        }
+        
+        // Add direct friend balances
+        for (const friend of friendsList) {
+          totalOwed += (friend.totalAmount || 0);
+        }
+        
+        setTotalBalance(totalOwed);
         
         console.log('Friends processed:', friendsList.length);
         setFriends(friendsList);
         setLoading(false);
+        setRefreshing(false);
       } else {
         console.warn('No user document found for email:', userEmail);
         setError('User account not found');
         setLoading(false);
+        setRefreshing(false);
       }
     } catch (e) {
       console.error('Error fetching friends:', e);
       setError(e instanceof Error ? e.message : 'Error loading friends');
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -220,6 +265,11 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
     navigation.navigate('AddFriendsScreen', params);
   };
 
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchFriends();
+  };
+
   const renderFriend = ({ item }: { item: any }) => {
     const bgColors = ['#F44336', '#9C27B0', '#FF9800', '#3F51B5', '#4CAF50', '#009688'];
     const randomColor = bgColors[item.name.charCodeAt(0) % bgColors.length];
@@ -228,6 +278,11 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
     const hasGroup = item.groups && item.groups.length > 0;
     const groupType = hasGroup ? item.groups[0].name : "";
     const groupIcon = getGroupIcon(groupType);
+    
+    // Format the amount display correctly
+    const owedAmount = item.totalAmount || 0;
+    const amountDisplay = Math.abs(owedAmount).toFixed(0);
+    const isPositive = owedAmount > 0;
     
     return (
       <TouchableOpacity
@@ -242,11 +297,9 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
           navigation.navigate('FriendsDashboardScreen', {
             friendId: item.id,
             friendName: item.name,
-            totalOwed: item.totalAmount || 1495, // fallback if not present
-            groups: item.groups || [
-              
-            ],
-            email: user?.email || undefined
+            totalOwed: item.totalAmount || 0,
+            email: user?.email || undefined,
+            groups: item.groups || []
           });
         }}
       >
@@ -257,7 +310,19 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
         <View style={styles.friendInfo}>
           <Text style={styles.friendName}>{item.name}</Text>
           
-          {hasGroup && (
+          {item.status === 'pending' ? (
+            <View style={styles.statusContainer}>
+              <Icon name="time-outline" size={14} color="#FF9800" />
+              <Text style={styles.pendingStatus}>Pending</Text>
+            </View>
+          ) : owedAmount !== 0 ? (
+            <Text style={[
+              styles.balanceInfo, 
+              { color: isPositive ? '#4CAF50' : '#E65100' }
+            ]}>
+              {isPositive ? `owes you ₹${amountDisplay}` : `you owe ₹${amountDisplay}`}
+            </Text>
+          ) : hasGroup && (
             <View style={styles.groupContainer}>
               <Icon name={groupIcon} size={16} color="#555" />
               <Text style={styles.groupName}>{item.groups[0].name}</Text>
@@ -266,12 +331,30 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
         </View>
         
         <View style={styles.amountWrap}>
-          <Text style={[
-            styles.amountText, 
-            { color: item.status === 'accepted' ? '#4CAF50' : '#E65100' }
-          ]}>
-            {item.status === 'accepted' ? 'Accepted' : 'Pending'}
-          </Text>
+          {owedAmount !== 0 ? (
+            <>
+              <Text style={[
+                styles.amountText, 
+                { color: isPositive ? '#4CAF50' : '#E65100' }
+              ]}>
+                ₹{amountDisplay}
+              </Text>
+              <Text style={[
+                styles.amountLabel,
+                { color: isPositive ? '#4CAF50' : '#E65100' }
+              ]}>
+                {isPositive ? 'owes you' : 'you owe'}
+              </Text>
+            </>
+          ) : item.status === 'pending' ? (
+            <Text style={[styles.amountText, { color: '#FF9800' }]}>
+              Pending
+            </Text>
+          ) : (
+            <Text style={[styles.amountText, { color: '#757575' }]}>
+              Settled
+            </Text>
+          )}
         </View>
       </TouchableOpacity>
     );
@@ -324,9 +407,19 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
         </Modal>
 
         <View style={styles.headerActions}>
-          <Text style={styles.totalAmount}>
-            Overall, you owe ₹{friends.reduce((sum, friend) => sum + (friend.totalAmount || 0), 0)}
-          </Text>
+          {totalBalance !== 0 ? (
+            <Text style={[
+              styles.totalAmount, 
+              {color: totalBalance > 0 ? '#4CAF50' : '#E65100'}
+            ]}>
+              {totalBalance > 0 
+                ? `Others owe you ₹${totalBalance.toFixed(0)}` 
+                : `You owe others ₹${Math.abs(totalBalance).toFixed(0)}`}
+            </Text>
+          ) : (
+            <Text style={styles.totalAmount}>All settled up</Text>
+          )}
+          
           <TouchableOpacity 
             style={styles.addFriendsButton}
             onPress={navigateToAddFriends}
@@ -354,7 +447,7 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
           </TouchableOpacity>
         </View>
 
-        {loading ? (
+        {loading && !refreshing ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#0A6EFF" />
             <Text style={styles.loadingText}>Loading friends...</Text>
@@ -386,8 +479,8 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
             keyExtractor={(item) => item.id}
             renderItem={renderFriend}
             ItemSeparatorComponent={() => <View style={styles.separator} />}
-            refreshing={loading}
-            onRefresh={fetchFriends}
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
             contentContainerStyle={{ paddingBottom: 80 }} // Add padding to avoid overlap with tab bar
           />
         )}
@@ -396,9 +489,9 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
   );
 };
 
-export default FriendsScreen;
-
+// Styles remain the same
 const styles = StyleSheet.create({
+  // ... existing styles
   screenContainer: {
     flex: 1,
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 20 : 10,
@@ -521,6 +614,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 4
   },
+  statusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4
+  },
+  pendingStatus: {
+    fontSize: 13,
+    color: '#FF9800',
+    marginLeft: 4,
+    fontWeight: '500'
+  },
+  balanceInfo: {
+    fontSize: 13,
+    marginTop: 4,
+    fontWeight: '500'
+  },
   groupName: {
     fontSize: 13,
     color: '#555',
@@ -532,6 +641,11 @@ const styles = StyleSheet.create({
   amountText: {
     fontSize: 14,
     fontWeight: '600'
+  },
+  amountLabel: {
+    fontSize: 10,
+    color: '#757575',
+    marginTop: 2
   },
   separator: {
     height: 1,
@@ -603,3 +717,5 @@ const styles = StyleSheet.create({
     fontWeight: 'bold'
   }
 });
+
+export default FriendsScreen;

@@ -5,8 +5,8 @@ import LoginScreen from './screens/LoginScreen';
 import RegisterScreen from './screens/RegistrationScreen';
 import WelcomeScreen from './screens/WelcomeScreen';
 import SetPINScreen from './screens/SetPINScreen';
-import PINEntryScreen from './screens/PINEntryScreen'; // Import the new PINEntryScreen
-import SplashScreen from './screens/SplashScreen'; // Import the SplashScreen
+import PINEntryScreen from './screens/PINEntryScreen';
+import SplashScreen from './screens/SplashScreen';
 import RegistrationSuccess from './screens/RegistrationSuccess';
 import MainDashboardScreen from './screens/MainDashboardScreen';
 import FriendDashboardScreen from './screens/FriendDashboardScreen';
@@ -20,6 +20,7 @@ import GroupDashboardScreen from './screens/GroupDashboardScreen';
 import AddGroupMembersScreen from './screens/AddGroupMembersScreen';
 import GroupSettingsScreen from './screens/GroupSettingsScreen';
 import JoinGroupScreen from './screens/JoinGroupScreen';
+import AddExpenseScreen from './screens/AddExpenseScreen'; // Import the AddExpenseScreen
 import { AuthProvider } from './components/AuthContext';
 
 // Fix the TypeScript error by providing a typed Stack
@@ -51,6 +52,9 @@ export default function App() {
           <Stack.Screen name="AddGroupMembersScreen" component={AddGroupMembersScreen} />
           <Stack.Screen name="GroupSettingsScreen" component={GroupSettingsScreen} />
           <Stack.Screen name="JoinGroupScreen" component={JoinGroupScreen} />
+          
+          {/* Expense screen */}
+          <Stack.Screen name="AddExpenseScreen" component={AddExpenseScreen} />
 
           {/* Friend-related screens */}
           <Stack.Screen name="AddFriendsScreen" component={AddFriendsScreen} />

@@ -1,4 +1,4 @@
-// Updated types.ts with fixed type definitions
+// Updated types.ts with AddExpenseScreen
 export type RootStackParamList = {
     // Auth and primary screens
     Splash: undefined;
@@ -6,7 +6,7 @@ export type RootStackParamList = {
     Register: undefined;
     OTP: undefined;
     SetPINScreen: undefined;
-    PINEntryScreen: undefined; // Added PINEntryScreen
+    PINEntryScreen: undefined;
     RegistrationScreen: undefined;
     LoginScreen: undefined;
     
@@ -31,7 +31,7 @@ export type RootStackParamList = {
         status?: string;
         refreshTrigger?: number;
         insideTabNavigator?: boolean;
-        toastStatus?: string; // Added toastStatus property
+        toastStatus?: string;
     };
     ActivityScreen: {
         insideTabNavigator?: boolean;
@@ -44,8 +44,8 @@ export type RootStackParamList = {
     AddFriendsScreen: {
         userId?: string;
         email?: string;
-        groupId?: string; // Added for group flow
-        groupName?: string; // Added for group flow
+        groupId?: string;
+        groupName?: string;
     };
     VerifyContactsScreen: {
         // For friend flow
@@ -65,8 +65,8 @@ export type RootStackParamList = {
         email?: string;
         status?: string;
         insideTabNavigator?: boolean;
-        toastStatus?: string; // Added toastStatus for consistency
-        refreshTrigger?: number; // Added refreshTrigger for consistency
+        toastStatus?: string;
+        refreshTrigger?: number;
     };
       
     CreateGroupScreen: {};
@@ -109,15 +109,25 @@ export type RootStackParamList = {
             balanceType: string;
             date: string;
         }[];
+        refresh?: boolean;
     };
+    
     FriendSettingsScreen: {
         friendId: string;
         friendName?: string;
         email?: string;
     };
+    
+    // Add Expense Screen
+    AddExpenseScreen: {
+        groupId?: string;
+        groupName?: string;
+        friendId?: string;
+        friendName?: string;
+    };
   };
   
-  // Update TabParamList to match your tab screens
+  // Tab param list
   export type TabParamList = {
     Friends: { 
         userId?: string; 
@@ -125,15 +135,15 @@ export type RootStackParamList = {
         status?: string;
         refreshTrigger?: number;
         insideTabNavigator?: boolean;
-        toastStatus?: string; // Added toastStatus property
+        toastStatus?: string;
     };
     Groups: {
         userId?: string;
         email?: string;
         status?: string;
         insideTabNavigator?: boolean;
-        toastStatus?: string; // Added toastStatus
-        refreshTrigger?: number; // Added refreshTrigger
+        toastStatus?: string;
+        refreshTrigger?: number;
     };
     Activity: {
         insideTabNavigator?: boolean;
@@ -146,5 +156,5 @@ export type RootStackParamList = {
         groupName?: string;
         friendId?: string;
         friendName?: string;
-      };
+    };
   };
