@@ -119,7 +119,7 @@ const CreateGroupScreen = ({ navigation, route }: CreateGroupScreenProps) => {
       Alert.alert('Group name required', 'Please enter a name for your group');
       return;
     }
-
+  
     // Check if user is authenticated using AuthContext
     if (!user) {
       console.log('User not authenticated');
@@ -135,33 +135,49 @@ const CreateGroupScreen = ({ navigation, route }: CreateGroupScreenProps) => {
       );
       return;
     }
-
+  
     setIsCreating(true);
-
+  
     try {
       console.log('Creating group with user:', user.uid);
+      
+      // Create the members array with current user
+      const members = [
+        {
+          uid: user.uid,
+          email: user.email || '',
+          name: user.displayName || 'You', // Firebase User object has displayName
+          isAdmin: true,
+          balance: 0 // Initialize balance as 0
+        }
+      ];
+      
+      // Extract memberIds from members array to ensure consistency
+      const memberIds = members.map(member => member.uid);
+      
+      // Extract emails for additional lookup field - phone omitted as it doesn't exist
+      const memberEmails = members
+        .map(member => member.email)
+        .filter(Boolean); // Remove any empty emails
       
       // Create the group data
       const groupData = {
         name: groupName.trim(),
+        description: '', // Add an empty description field for future use
         type: selectedType,
         createdBy: user.uid,
         createdAt: serverTimestamp(),
-        members: [
-          {
-            uid: user.uid,
-            email: user.email || '',
-            name: user.displayName || user.name || 'You',
-            isAdmin: true,
-          }
-        ],
+        members: members,
+        memberIds: memberIds, // Add explicit memberIds array
+        memberEmails: memberEmails, // Add emails for lookup
         totalAmount: 0,
+        lastUpdated: serverTimestamp(),
         // Add image URL if available (in a real app, you'd upload to storage first)
         imageUrl: groupImage || null
       };
-
+  
       console.log('Creating group with data:', JSON.stringify(groupData));
-
+  
       // Create a new group and get the reference
       const groupRef = await addDoc(collection(db, 'groups'), groupData);
       

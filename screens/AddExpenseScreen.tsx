@@ -139,6 +139,20 @@ const AddExpenseScreen = () => {
     { id: 'shares', name: 'Split by shares', description: 'Use shares to determine split ratio' }
   ];
   useEffect(() => {
+    // For group expense
+    if (groupId) {
+      fetchGroupMembers();
+    } 
+    // For friend expense
+    else if (friendId) {
+      setupFriendExpense();
+    }
+    console.log("Component mounted, fetching groups and friends...");
+
+    // Fetch available groups for dropdown
+    fetchAvailableGroups();
+  }, [groupId, friendId, user]);
+  useEffect(() => {
   // Only fetch if user exists
   if (user && user.uid) {
     const fetchFriends = async () => {
@@ -329,25 +343,35 @@ const AddExpenseScreen = () => {
   const fetchGroupMembers = async () => {
     if (!groupId || !user) return;
     
+    console.log(`Fetching members for group: ${groupId}`);
     setLoading(true);
+    
     try {
+      // Get the group document directly
       const groupRef = doc(db, 'groups', groupId);
       const groupSnap = await getDoc(groupRef);
       
       if (groupSnap.exists()) {
         const groupData = groupSnap.data();
+        console.log(`Group data loaded: ${groupData.name}`);
+        console.log('Group data structure:', JSON.stringify({
+          hasMembers: !!groupData.members,
+          membersLength: groupData.members?.length,
+          hasMemberIds: !!groupData.memberIds,
+          memberIdsLength: groupData.memberIds?.length
+        }));
         
+        let membersList: GroupMember[] = [];
+        
+        // First try to get members from the members array
         if (groupData.members && Array.isArray(groupData.members)) {
-          // Store group member IDs for filtering friend lists
-          const memberIds = groupData.members.map((member: any) => member.uid);
-          setGroupMemberIds(memberIds);
+          console.log('Using members array from group data');
           
-          // Process only group members - this ensures only people in the group are shown
-          const membersList = groupData.members.map((member: any) => {
-            const isCurrentUser = member.uid === user.uid;
+          membersList = groupData.members.map((member: any) => {
+            const isCurrentUser = member.uid === user.uid || member.id === user.uid;
             return {
-              uid: member.uid,
-              name: isCurrentUser ? 'You' : member.name,
+              uid: member.uid || member.id, // Use uid if available, fall back to id
+              name: isCurrentUser ? 'You' : (member.name || 'Unknown'),
               email: member.email,
               phone: member.phone,
               isAdmin: member.isAdmin,
@@ -356,6 +380,63 @@ const AddExpenseScreen = () => {
             };
           });
           
+          console.log(`Processed ${membersList.length} members from members array`);
+        } 
+        // If no members array, try using memberIds
+        else if (groupData.memberIds && Array.isArray(groupData.memberIds)) {
+          console.log('Using memberIds array from group data');
+          
+          // We need to look up each member
+          const userPromises = groupData.memberIds.map(async (memberId: string) => {
+            // If it's the current user, don't need to look up
+            if (memberId === user.uid) {
+              return {
+                uid: user.uid,
+                name: 'You',
+                email: user.email || undefined,
+                isSelected: true
+              };
+            }
+            
+            // Otherwise look up the user document
+            try {
+              const userDoc = await getDoc(doc(db, 'users', memberId));
+              if (userDoc.exists()) {
+                return {
+                  uid: memberId,
+                  name: userDoc.data().name || 'Unknown',
+                  email: userDoc.data().email,
+                  phone: userDoc.data().phone,
+                  isSelected: true
+                };
+              }
+              return {
+                uid: memberId,
+                name: 'User ' + memberId.substring(0, 4),
+                isSelected: true
+              };
+            } catch (err) {
+              console.log(`Error looking up member ${memberId}:`, err);
+              return {
+                uid: memberId,
+                name: 'User ' + memberId.substring(0, 4),
+                isSelected: true
+              };
+            }
+          });
+          
+          membersList = await Promise.all(userPromises);
+          console.log(`Processed ${membersList.length} members from memberIds`);
+        }
+        
+        if (membersList.length > 0) {
+          console.log('Final member list:', membersList.map(m => `${m.name} (${m.uid})`));
+          
+          // Store group member IDs for filtering friend lists
+          const memberIds = membersList.map(member => member.uid);
+          setGroupMemberIds(memberIds);
+          
+          // Set members state
           setMembers(membersList);
           
           // Setup initial selected members state
@@ -373,7 +454,24 @@ const AddExpenseScreen = () => {
           
           // Also fetch all user's friends to show non-group members for splitting
           fetchNonGroupFriends(memberIds);
+        } else {
+          console.warn('No members found in group data');
+          // Handle the case where no members are found
+          const currentUser = {
+            uid: user.uid,
+            name: 'You',
+            email: user.email || undefined,
+            isSelected: true
+          };
+          
+          setMembers([currentUser]);
+          setPaidBy(currentUser);
+          setSelectedMembers({ [user.uid]: true });
         }
+      } else {
+        console.log('Group document not found');
+        Alert.alert('Error', 'Group not found');
+        navigation.goBack();
       }
     } catch (error) {
       console.error('Error fetching group members:', error);
@@ -432,20 +530,49 @@ const AddExpenseScreen = () => {
     if (!user) return;
     
     try {
+      console.log("Fetching available groups for dropdown...");
       const groups: any[] = [];
       
-      // Fetch groups where user is a member
-      const groupsRef = collection(db, 'groups');
-      const q = query(groupsRef, where('memberIds', 'array-contains', user.uid));
-      const groupsSnap = await getDocs(q);
+      // Fetch ALL groups first to check their structure
+      const allGroupsRef = collection(db, 'groups');
+      const allGroupsSnap = await getDocs(allGroupsRef);
+      console.log(`Found ${allGroupsSnap.size} total groups in database`);
       
-      groupsSnap.forEach(doc => {
-        groups.push({
-          id: doc.id,
-          name: doc.data().name || 'Unnamed Group',
-          type: 'group'
-        });
-      });
+      // Check each group for the current user
+      for (const groupDoc of allGroupsSnap.docs) {
+        const groupData = groupDoc.data();
+        
+        // Check if current user is in this group through any method
+        let userInGroup = false;
+        
+        // Check memberIds array
+        if (groupData.memberIds && Array.isArray(groupData.memberIds) && groupData.memberIds.includes(user.uid)) {
+          console.log(`User found in memberIds for group ${groupData.name}`);
+          userInGroup = true;
+        }
+        
+        // Check members array
+        if (!userInGroup && groupData.members && Array.isArray(groupData.members)) {
+          const userMember = groupData.members.find(m => 
+            m.uid === user.uid || m.id === user.uid || (user.email && m.email === user.email)
+          );
+          
+          if (userMember) {
+            console.log(`User found in members array for group ${groupData.name}`);
+            userInGroup = true;
+          }
+        }
+        
+        // If user is in this group, add it to available groups
+        if (userInGroup) {
+          groups.push({
+            id: groupDoc.id,
+            name: groupData.name || 'Unnamed Group',
+            type: 'group'
+          });
+          console.log(`Added group to dropdown: ${groupData.name}`);
+        }
+      }
       
       // Only fetch friends if not coming from a GroupDashboard
       if (!groupId) {
@@ -467,20 +594,23 @@ const AddExpenseScreen = () => {
               type: 'friend'
             }));
             
+            console.log(`Found ${friends.length} friends for dropdown`);
             setAvailableGroups([...groups, ...friends]);
             return;
           }
         }
       }
       
-      // If coming from GroupDashboard or if friend fetching failed, only show groups
       setAvailableGroups(groups);
+      console.log(`Set available groups for dropdown: ${groups.length} items`);
     } catch (error) {
       console.error('Error fetching available groups:', error);
     }
   };
   
   const toggleMemberSelection = (memberId: string) => {
+    console.log(`Toggling selection for member: ${memberId}`);
+    
     setSelectedMembers(prev => ({
       ...prev,
       [memberId]: !prev[memberId]
@@ -887,143 +1017,181 @@ const AddExpenseScreen = () => {
       });
     }
   };
-  
-  const validateExpense = () => {
-    if (!description.trim()) {
-      setError('Please enter a description');
-      return false;
-    }
-    
-    if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
-      setError('Please enter a valid amount');
-      return false;
-    }
-    
-    if (!paidBy) {
-      setError('Please select who paid');
-      return false;
-    }
-    
-    // Check if at least one member is selected
-    const hasSelectedMembers = Object.values(selectedMembers).some(selected => selected);
-    if (!hasSelectedMembers) {
-      setError('Please select at least one person to split with');
-      return false;
-    }
-    
-    // Validate custom splits if applicable
-    if (splitMethod !== 'equal' && !validateCustomSplits()) {
-      if (splitMethod === 'percentage') {
-        setError('Percentages must add up to 100%');
-      } else if (splitMethod === 'unequal') {
-        setError('Amounts must add up to the total');
-      } else {
-        setError('Please enter valid split values');
-      }
-      return false;
-    }
-    
-    return true;
-  };
-  
-  const saveExpense = async () => {
-    if (!validateExpense()) return;
-    if (!user) {
-      Alert.alert('Error', 'You must be logged in to add an expense');
-      return;
-    }
-    
-    // Check if we have either groupId or friendId from route params
-    // Since the params might have changed after component mounted
-    const currentGroupId = route.params?.groupId || groupId;
-    const currentFriendId = route.params?.friendId || friendId;
-    
-    // Modify validation to handle tab bar expense creation
-    // If no group or friend is specified, but we have selected members, it's valid
-    const hasSelectedMembers = Object.values(selectedMembers).some(selected => selected);
-    
-    if (!currentGroupId && !currentFriendId && !hasSelectedMembers) {
-      setError('Please select a group or friend for this expense');
-      return;
-    }
-    
-    setSaving(true);
-    setError('');
-    
-    try {
-      // Calculate the split amounts
-      const splitAmounts = calculateSplitAmounts();
-      
-      // Prepare expense data for Firestore
-      const expenseData = {
-        description,
-        amount: parseFloat(amount),
-        date: Timestamp.fromDate(date),
-        category: category || 'other',
-        notes,
-        paidById: paidBy?.uid,
-        paidByName: paidBy?.name,
-        splitMethod,
-        splitWith: splitAmounts.map(split => {
-          const member = members.find(m => m.uid === split.memberId);
-          return {
-            uid: split.memberId,
-            name: member?.name || 'Unknown',
-            amount: split.amount,
-            percentage: split.percentage,
-            ...(splitMethod === 'shares' && { shares: split.shares })
-          };
-        }),
-        groupId: currentGroupId || null,
-        groupName: route.params?.groupName || groupName || null,
-        friendId: currentFriendId || null,
-        friendName: route.params?.friendName || friendName || null,
-        createdBy: user.uid,
-        createdAt: serverTimestamp(),
-        receiptUrl: receiptImage || null,
-      };
+// Update the saveExpense function in AddExpenseScreen.tsx to handle the TabBar case better
 
-      if (currentGroupId) {
-        // Handle group expense
-        await saveGroupExpense({...expenseData, groupId: currentGroupId});
-      } else if (currentFriendId) {
-        // Handle friend expense
+const saveExpense = async () => {
+  if (!validateExpense()) return;
+  if (!user) {
+    Alert.alert('Error', 'You must be logged in to add an expense');
+    return;
+  }
+  
+  // Check if we have either groupId or friendId from route params
+  // Since the params might have changed after component mounted
+  const currentGroupId = route.params?.groupId || groupId;
+  const currentFriendId = route.params?.friendId || friendId;
+  
+  // Modify validation to handle tab bar expense creation
+  const hasSelectedMembers = Object.values(selectedMembers).some(selected => selected);
+  
+  if (!currentGroupId && !currentFriendId && !hasSelectedMembers) {
+    setError('Please select at least one person to split with');
+    return;
+  }
+  
+  console.log(`Saving expense with: groupId=${currentGroupId}, friendId=${currentFriendId}, selectedMembers=${Object.keys(selectedMembers).filter(id => selectedMembers[id]).join(',')}`);
+  
+  setSaving(true);
+  setError('');
+  
+  try {
+    // Calculate the split amounts
+    const splitAmounts = calculateSplitAmounts();
+    
+    // Prepare expense data for Firestore
+    const expenseData = {
+      description,
+      amount: parseFloat(amount),
+      date: Timestamp.fromDate(date),
+      category: category || 'other',
+      notes,
+      paidById: paidBy?.uid,
+      paidByName: paidBy?.name,
+      splitMethod,
+      splitWith: splitAmounts.map(split => {
+        const member = members.find(m => m.uid === split.memberId);
+        return {
+          uid: split.memberId,
+          name: member?.name || 'Unknown',
+          amount: split.amount,
+          percentage: split.percentage,
+          ...(splitMethod === 'shares' && { shares: split.shares })
+        };
+      }),
+      groupId: currentGroupId || null,
+      groupName: route.params?.groupName || groupName || null,
+      friendId: currentFriendId || null,
+      friendName: route.params?.friendName || friendName || null,
+      createdBy: user.uid,
+      createdAt: serverTimestamp(),
+      receiptUrl: receiptImage || null,
+    };
+
+    if (currentGroupId) {
+      // Handle group expense
+      console.log(`Saving as group expense to group: ${currentGroupId}`);
+      await saveGroupExpense({...expenseData, groupId: currentGroupId});
+      
+      // Navigate back to group dashboard with refresh flag
+      navigation.navigate('GroupDashboardScreen', {
+        groupId: currentGroupId,
+        groupName: expenseData.groupName,
+        refresh: true
+      });
+    } else if (currentFriendId) {
+      // Handle friend expense
+        console.log(`Saving as friend expense with friend: ${currentFriendId}`);
         await saveFriendExpense({...expenseData, friendId: currentFriendId});
-      } else if (hasSelectedMembers) {
-        // New case: Handle tab bar expense creation with selected members
-        // We'll create this as a friend expense with the first selected member
-        const selectedMemberIds = Object.entries(selectedMembers)
-          .filter(([_, isSelected]) => isSelected && _ !== user.uid)  
-          .map(([id]) => id);
         
-        if (selectedMemberIds.length > 0) {
-          // Get first selected member that isn't the current user
-          const targetFriendId = selectedMemberIds[0];
-          const targetFriend = members.find(m => m.uid === targetFriendId);
+        // Navigate back to friend dashboard with refresh flag - fix type issue
+        navigation.navigate('FriendsDashboardScreen', {
+          friendId: currentFriendId,
+          friendName: expenseData.friendName || '',
+          totalOwed: 0, // This will be recalculated on the dashboard
+          groups: [], // This will be reloaded on the dashboard
+          email: user.email || undefined,
+          refresh: true
+        });
+    } else if (hasSelectedMembers) {
+      // New case: Handle tab bar expense creation with selected members
+      console.log(`Creating expense from tab bar with selected members`);
+      
+      // Get all selected members that aren't the current user
+      const selectedMemberIds = Object.entries(selectedMembers)
+        .filter(([id, isSelected]) => isSelected && id !== user.uid)
+        .map(([id]) => id);
+      
+      console.log(`Selected member IDs: ${selectedMemberIds.join(', ')}`);
+      
+      if (selectedMemberIds.length > 0) {
+        // Get first selected member that isn't the current user
+        const targetFriendId = selectedMemberIds[0];
+        const targetFriend = members.find(m => m.uid === targetFriendId);
+        
+        if (targetFriend) {
+          console.log(`Creating friend expense with: ${targetFriend.name} (${targetFriendId})`);
+          await saveFriendExpense({
+            ...expenseData, 
+            friendId: targetFriendId,
+            friendName: targetFriend.name
+          });
           
-          if (targetFriend) {
-            await saveFriendExpense({
-              ...expenseData, 
-              friendId: targetFriendId,
-              friendName: targetFriend.name
-            });
-          } else {
-            throw new Error('Selected member not found in members list');
-          }
+          // Navigate to friend dashboard - fix type issue
+          navigation.navigate('FriendsDashboardScreen', {
+            friendId: targetFriendId,
+            friendName: targetFriend.name,
+            totalOwed: 0, // Will be calculated on the dashboard
+            groups: [], // Will be loaded on the dashboard
+            email: user.email || undefined,
+            refresh: true
+          });
         } else {
-          throw new Error('No friends selected to split with');
+          throw new Error('Selected member not found in members list');
         }
       } else {
-        throw new Error('Missing group or friend information');
+        throw new Error('No friends selected to split with');
       }
-      
-    } catch (error) {
-      console.error('Error saving expense:', error);
-      setError('Failed to save expense. Please try again.');
-    } finally {
-      setSaving(false);
+    } else {
+      throw new Error('Missing group or friend information');
     }
-  };
+    
+  } catch (error) {
+    console.error('Error saving expense:', error);
+    setError(`Failed to save expense: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  } finally {
+    setSaving(false);
+  }
+};
+
+// Also ensure this validation function correctly handles all cases
+const validateExpense = () => {
+  if (!description.trim()) {
+    setError('Please enter a description');
+    return false;
+  }
+  
+  if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+    setError('Please enter a valid amount');
+    return false;
+  }
+  
+  if (!paidBy) {
+    setError('Please select who paid');
+    return false;
+  }
+  
+  // Check if at least one member is selected
+  const hasSelectedMembers = Object.values(selectedMembers).some(selected => selected);
+  if (!hasSelectedMembers) {
+    setError('Please select at least one person to split with');
+    return false;
+  }
+  
+  // Validate custom splits if applicable
+  if (splitMethod !== 'equal' && !validateCustomSplits()) {
+    if (splitMethod === 'percentage') {
+      setError('Percentages must add up to 100%');
+    } else if (splitMethod === 'unequal') {
+      setError('Amounts must add up to the total');
+    } else {
+      setError('Please enter valid split values');
+    }
+    return false;
+  }
+  
+  return true;
+};
+
   
   const saveGroupExpense = async (expenseData: any) => {
     if (!groupId || !user) return;
@@ -1532,6 +1700,17 @@ const AddExpenseScreen = () => {
             </TouchableOpacity>
           </View>
           
+          {/* Debugging information */}
+          {__DEV__ && (
+            <View style={{padding: 8, backgroundColor: '#f0f0f0', marginHorizontal: 16, marginBottom: 8, borderRadius: 4}}>
+              <Text style={{fontSize: 12, color: '#333'}}>
+                Context: {groupId ? `Group "${groupName}"` : friendId ? `Friend "${friendName}"` : 'No context'}{'\n'}
+                Members Loaded: {members.length}{'\n'}
+                Members Selected: {Object.values(selectedMembers).filter(Boolean).length}
+              </Text>
+            </View>
+          )}
+          
           <View style={styles.searchContainer}>
             <Ionicons name="search" size={20} color="#666" style={styles.searchIcon} />
             <TextInput
@@ -1552,6 +1731,7 @@ const AddExpenseScreen = () => {
             <TouchableOpacity
               style={styles.selectAllButton}
               onPress={() => {
+                console.log('Selecting all members');
                 const newSelectedMembers = { ...selectedMembers };
                 members.forEach(member => {
                   newSelectedMembers[member.uid] = true;
@@ -1561,10 +1741,11 @@ const AddExpenseScreen = () => {
             >
               <Text style={styles.selectAllButtonText}>Select All</Text>
             </TouchableOpacity>
-
+  
             <TouchableOpacity
               style={styles.deselectAllButton}
               onPress={() => {
+                console.log('Deselecting all members');
                 const newSelectedMembers = { ...selectedMembers };
                 members.forEach(member => {
                   newSelectedMembers[member.uid] = false;
@@ -1575,32 +1756,47 @@ const AddExpenseScreen = () => {
               <Text style={styles.deselectAllButtonText}>Deselect All</Text>
             </TouchableOpacity>
           </View>
-
-          <FlatList
-            data={members.filter(m => 
-              m.name.toLowerCase().includes(searchQuery.toLowerCase())
-            )}
-            keyExtractor={(item) => item.uid}
-            renderItem={({ item }) => (
-              <TouchableOpacity 
-                style={styles.memberItem}
-                onPress={() => toggleMemberSelection(item.uid)}
-              >
-                <View style={styles.memberAvatar}>
-                  <Text style={styles.memberInitial}>
-                    {item.name.charAt(0).toUpperCase()}
-                  </Text>
+  
+          {members.length > 0 ? (
+            <FlatList
+              data={members.filter(m => 
+                m.name.toLowerCase().includes(searchQuery.toLowerCase())
+              )}
+              keyExtractor={(item) => item.uid}
+              renderItem={({ item }) => (
+                <TouchableOpacity 
+                  style={styles.memberItem}
+                  onPress={() => {
+                    console.log(`Toggling selection for: ${item.name} (${item.uid})`);
+                    toggleMemberSelection(item.uid);
+                  }}
+                >
+                  <View style={styles.memberAvatar}>
+                    <Text style={styles.memberInitial}>
+                      {item.name.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                  <Text style={styles.memberName}>{item.name}</Text>
+                  <View style={[
+                    styles.checkbox,
+                    selectedMembers[item.uid] && styles.checkboxSelected
+                  ]}>
+                    {selectedMembers[item.uid] && <Ionicons name="checkmark" size={16} color="#fff" />}
+                  </View>
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <View style={styles.emptyMembersContainer}>
+                  <Text style={styles.emptyMembersText}>No matching members found</Text>
                 </View>
-                <Text style={styles.memberName}>{item.name}</Text>
-                <View style={[
-                  styles.checkbox,
-                  selectedMembers[item.uid] && styles.checkboxSelected
-                ]}>
-                  {selectedMembers[item.uid] && <Ionicons name="checkmark" size={16} color="#fff" />}
-                </View>
-              </TouchableOpacity>
-            )}
-          />
+              }
+            />
+          ) : (
+            <View style={styles.emptyMembersContainer}>
+              <ActivityIndicator size="small" color="#0A6EFF" />
+              <Text style={styles.emptyMembersText}>Loading members...</Text>
+            </View>
+          )}
           
           <TouchableOpacity 
             style={styles.confirmButton}
@@ -1780,7 +1976,7 @@ const AddExpenseScreen = () => {
      <KeyboardAvoidingView 
   behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
   style={{flex: 1}}
-  keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+  keyboardVerticalOffset={Platform.OS === 'ios' ? 5 : 0}
 >
         {/* Header */}
         <View style={styles.header}>
@@ -1794,11 +1990,15 @@ const AddExpenseScreen = () => {
         </View>
         
         {/* Group/Friend context banner */}
-{(groupId || friendId) && (
+        {(groupId || friendId) && (
   <View style={styles.contextBanner}>
     <TouchableOpacity 
       style={styles.contextInfo}
-      onPress={() => setShowGroupDropdown(!showGroupDropdown)}
+      onPress={() => {
+        console.log("Toggling dropdown, current state:", showGroupDropdown);
+        console.log("Available groups:", availableGroups.length);
+        setShowGroupDropdown(!showGroupDropdown);
+      }}
     >
       <Ionicons name={groupId ? "people" : "person"} size={18} color="#fff" />
       <Text style={styles.contextText}>
@@ -1806,36 +2006,39 @@ const AddExpenseScreen = () => {
       </Text>
       <Ionicons name="chevron-down" size={16} color="#fff" style={{ marginLeft: 4 }} />
     </TouchableOpacity>
-    <TouchableOpacity 
-      style={styles.contextButton}
-      onPress={() => setShowGroupDropdown(!showGroupDropdown)}
-    >
-      <Text style={styles.contextButtonText}>Change</Text>
-    </TouchableOpacity>
   </View>
 )}
 
-{/* Group Dropdown */}
-{showGroupDropdown && availableGroups.length > 0 && (
+{/* Group Dropdown - Improved Rendering */}
+{showGroupDropdown && (
   <View style={styles.dropdownContainer}>
-    <FlatList
-      data={availableGroups}
-      keyExtractor={(item) => item.id}
-      style={styles.dropdownList}
-      renderItem={({ item }) => (
-        <TouchableOpacity 
-          style={styles.dropdownItem} 
-          onPress={() => handleChangeGroupOrFriend(item)}
-        >
-          <Ionicons 
-            name={item.type === 'group' ? "people" : "person"} 
-            size={16} 
-            color="#0A6EFF" 
-          />
-          <Text style={styles.dropdownItemText}>{item.name}</Text>
-        </TouchableOpacity>
-      )}
-    />
+    {availableGroups.length > 0 ? (
+      <FlatList
+        data={availableGroups}
+        keyExtractor={(item) => item.id}
+        style={styles.dropdownList}
+        renderItem={({ item }) => (
+          <TouchableOpacity 
+            style={styles.dropdownItem} 
+            onPress={() => {
+              console.log("Selected group/friend:", item);
+              handleChangeGroupOrFriend(item);
+            }}
+          >
+            <Ionicons 
+              name={item.type === 'group' ? "people" : "person"} 
+              size={16} 
+              color="#0A6EFF" 
+            />
+            <Text style={styles.dropdownItemText}>{item.name}</Text>
+          </TouchableOpacity>
+        )}
+      />
+    ) : (
+      <View style={styles.emptyDropdownItem}>
+        <Text style={styles.emptyDropdownText}>No groups or friends found</Text>
+      </View>
+    )}
   </View>
 )}
         
@@ -2109,14 +2312,7 @@ const styles = StyleSheet.create({
   contextText: {
     color: '#fff', 
     marginLeft: 8, 
-    fontWeight: '500',
-    paddingHorizontal: 16,
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center'
+    fontWeight: '500'
   },
   scanningText: {
     color: '#0A6EFF',
@@ -2640,7 +2836,7 @@ const styles = StyleSheet.create({
   },
   dropdownContainer: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 110 : 100,
+    top: Platform.OS === 'ios' ? 120 : 110,
     left: 16,
     right: 16,
     backgroundColor: '#fff',
@@ -2650,11 +2846,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
-    zIndex: 1000,
+    zIndex: 9999, // Increase z-index to ensure it appears above other content
   },
   dropdownList: {
     maxHeight: 200,
   },
+  // Make sure the other related styles are also in your styles:
   dropdownItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2706,6 +2903,26 @@ const styles = StyleSheet.create({
     color: '#666',
     fontSize: 14,
     fontWeight: '500',
+  },
+  emptyDropdownItem: {
+    padding: 16,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  emptyDropdownText: {
+    fontSize: 14,
+    color: '#999',
+  },
+  emptyMembersContainer: {
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyMembersText: {
+    fontSize: 14,
+    color: '#999',
+    marginTop: 8,
   },
 });
 export default AddExpenseScreen;
