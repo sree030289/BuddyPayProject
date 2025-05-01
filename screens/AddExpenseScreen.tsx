@@ -16,7 +16,8 @@ import {
   Image,
   Dimensions,
   Keyboard,
-  Animated
+  Animated,
+  InputAccessoryView
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { RouteProp, useNavigation, useRoute, CommonActions } from '@react-navigation/native';
@@ -24,6 +25,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, TabParamList } from '../types';
 import { useAuth } from '../components/AuthContext';
 import { formatCurrency } from '../utils/formatCurrency';
+import SimpleSplitOptions from '../components/SimpleSplitOptions';
+
 import { 
   collection, 
   addDoc, 
@@ -1590,7 +1593,7 @@ const saveFriendExpense = async (expenseData: any) => {
                   <Ionicons 
                     name={item.icon as any} 
                     size={24} 
-                    color={category === item.id ? '#0A6EFF' : '#666'} 
+                    color={category === item.id ? '#8A2BE2' : '#666'} 
                   />
                 </View>
                 <Text style={[
@@ -1702,7 +1705,7 @@ const saveFriendExpense = async (expenseData: any) => {
                 </View>
                 <Text style={styles.memberName}>{item.name}</Text>
                 {paidBy?.uid === item.uid && (
-                  <Ionicons name="checkmark-circle" size={24} color="#0A6EFF" />
+                  <Ionicons name="checkmark-circle" size={24} color="#8A2BE2" />
                 )}
               </TouchableOpacity>
             )}
@@ -1719,60 +1722,63 @@ const saveFriendExpense = async (expenseData: any) => {
       animationType="slide"
       onRequestClose={() => setShowSplitModal(false)}
     >
-       
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Split Options</Text>
-            <View style={styles.headerActions}>
-              <TouchableOpacity 
-                style={styles.infoButton}
-                onPress={() => {
-                  setShowSplitModal(false);
-                  setShowSplitInfoModal(true);
-                }}
-              >
-                <Ionicons name="information-circle-outline" size={24} color="#0A6EFF" />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setShowSplitModal(false)}>
-                <Ionicons name="close" size={24} color="#333" />
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity onPress={() => setShowSplitModal(false)}>
+              <Ionicons name="close" size={24} color="#333" />
+            </TouchableOpacity>
           </View>
           
-          <FlatList
-            data={splitOptions}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <TouchableOpacity 
-                style={[
-                  styles.splitOptionItem, 
-                  splitMethod === item.id && styles.selectedSplitOption
-                ]}
-                onPress={() => handleSplitMethodSelect(item.id)}
-              >
-               
-                <View style={styles.splitOptionContent}>
-                  <Text style={[
-                    styles.splitOptionTitle,
-                    splitMethod === item.id && styles.selectedSplitOptionText
-                  ]}>
-                    {item.name}
-                  </Text>
-                  <Text style={styles.splitOptionDescription}>
-                    {item.description}
-                  </Text>
-                </View>
-                {splitMethod === item.id && (
-                  <Ionicons name="checkmark-circle" size={24} color="#0A6EFF" />
-                )}
-              </TouchableOpacity>
-            )}
+          <SimpleSplitOptions
+            totalAmount={parseFloat(amount) || 0}
+            members={members}
+            selectedMembers={selectedMembers}
+            onToggleMember={(uid) => {
+              toggleMemberSelection(uid);
+            }}
+            splitMethod={splitMethod}
+            onSplitMethodChange={(method) => {
+              setSplitMethod(method);
+              
+              // Initialize custom splits if needed
+              if (method !== 'equal') {
+                const initialSplits = members
+                  .filter(m => selectedMembers[m.uid])
+                  .map(member => {
+                    if (method === 'percentage') {
+                      // Equal percentages
+                      const count = Object.values(selectedMembers).filter(Boolean).length;
+                      const percentage = count > 0 ? (100 / count).toFixed(2) : '0';
+                      return { memberId: member.uid, value: percentage };
+                    } else if (method === 'shares') {
+                      // 1 share each initially
+                      return { memberId: member.uid, value: '1' };
+                    } else {
+                      // Equal amounts
+                      const count = Object.values(selectedMembers).filter(Boolean).length;
+                      const amount = count > 0 ? (parseFloat(amount) / count).toFixed(2) : '0';
+                      return { memberId: member.uid, value: amount };
+                    }
+                  });
+                
+                setCustomSplits(initialSplits);
+              }
+            }}
+            customSplits={customSplits}
+            onCustomSplitsChange={(splits) => {
+              setCustomSplits(splits);
+            }}
+            onApplySplit={() => {
+              setShowSplitModal(false);
+            }}
           />
         </View>
       </View>
     </Modal>
   );
+  
   
   const renderSplitInfoModal = () => (
     <Modal
@@ -1865,7 +1871,7 @@ const saveFriendExpense = async (expenseData: any) => {
                   );
                 }}
               >
-                <Ionicons name="information-circle-outline" size={24} color="#0A6EFF" />
+                <Ionicons name="information-circle-outline" size={24} color="#8A2BE2" />
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setShowMembersModal(false)}>
                 <Ionicons name="close" size={24} color="#333" />
@@ -1954,7 +1960,7 @@ const saveFriendExpense = async (expenseData: any) => {
             />
           ) : (
             <View style={styles.emptyMembersContainer}>
-              <ActivityIndicator size="small" color="#0A6EFF" />
+              <ActivityIndicator size="small" color="#8A2BE2" />
               <Text style={styles.emptyMembersText}>Loading members...</Text>
             </View>
           )}
@@ -2082,75 +2088,145 @@ const handleChangeGroupOrFriend = (item: any) => {
   setShowGroupDropdown(false);
 };
   
-  const renderCustomSplitModal = () => (
-    <Modal
-      visible={showCustomSplitModal}
-      transparent={true}
-      animationType="slide"
-      onRequestClose={() => setShowCustomSplitModal(false)}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>
-              {splitMethod === 'percentage' ? 'Split by Percentage' : 
-               splitMethod === 'unequal' ? 'Split by Amounts' : 'Split by Shares'}
-            </Text>
-            <TouchableOpacity onPress={() => setShowCustomSplitModal(false)}>
-              <Ionicons name="close" size={24} color="#333" />
-            </TouchableOpacity>
-          </View>
-          
-          <View style={styles.splitTotalContainer}>
-            <Text style={styles.splitTotalLabel}>Total Amount</Text>
-            <Text style={styles.splitTotalAmount}>${formatCurrency(parseFloat(amount) || 0)}</Text>
-          </View>
-          
-          <FlatList
-            data={customSplits}
-            keyExtractor={(item) => item.memberId}
-            renderItem={({ item }) => (
-              <View style={styles.customSplitItem}>
-                <View style={styles.customSplitMember}>
-                  <View style={styles.miniAvatar}>
-                    <Text style={styles.miniAvatarText}>
-                      {getMemberName(item.memberId).charAt(0).toUpperCase()}
+  const renderCustomSplitModal = () => {
+    // Add local state for split validation error
+    const [splitValidationError, setSplitValidationError] = useState('');
+    
+    // Function to validate split and show error in modal
+    const validateAndApplySplit = () => {
+      // Clear any previous errors
+      setSplitValidationError('');
+      
+      // Validate splits based on split method
+      if (splitMethod === 'percentage') {
+        // Check if percentages add up to 100%
+        const total = customSplits.reduce((sum, split) => {
+          const value = parseFloat(split.value) || 0;
+          return sum + value;
+        }, 0);
+        
+        if (Math.abs(total - 100) > 0.01) {
+          setSplitValidationError(`Percentages must add up to 100%. Current total: ${total.toFixed(2)}%`);
+          return;
+        }
+      } else if (splitMethod === 'unequal') {
+        // Check if amounts add up to the total
+        const totalAmount = parseFloat(amount);
+        if (isNaN(totalAmount)) {
+          setSplitValidationError('Please enter a valid expense amount first');
+          return;
+        }
+        
+        const total = customSplits.reduce((sum, split) => {
+          const value = parseFloat(split.value) || 0;
+          return sum + value;
+        }, 0);
+        
+        if (Math.abs(total - totalAmount) > 0.01) {
+          setSplitValidationError(`Amounts must add up to ${formatCurrency(totalAmount)}. Current total: ${formatCurrency(total)}`);
+          return;
+        }
+      }
+      
+      // If we get here, validation passed - close the modal
+      setShowCustomSplitModal(false);
+    };
+    
+    return (
+      <Modal
+        visible={showCustomSplitModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowCustomSplitModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {splitMethod === 'percentage' ? 'Split by Percentage' : 
+                 splitMethod === 'unequal' ? 'Split by Amounts' : 'Split by Shares'}
+              </Text>
+              <TouchableOpacity onPress={() => setShowCustomSplitModal(false)}>
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.splitTotalContainer}>
+              <Text style={styles.splitTotalLabel}>Total Amount</Text>
+              <Text style={styles.splitTotalAmount}>${formatCurrency(parseFloat(amount) || 0)}</Text>
+            </View>
+            
+            {/* Error message display inside modal */}
+            {splitValidationError ? (
+              <View style={styles.splitErrorContainer}>
+                <Ionicons name="alert-circle-outline" size={18} color="#FF3B30" />
+                <Text style={styles.splitErrorText}>{splitValidationError}</Text>
+              </View>
+            ) : null}
+            
+            <FlatList
+              data={customSplits}
+              keyExtractor={(item) => item.memberId}
+              renderItem={({ item }) => (
+                <View style={styles.customSplitItem}>
+                  <View style={styles.customSplitMember}>
+                    <View style={styles.miniAvatar}>
+                      <Text style={styles.miniAvatarText}>
+                        {getMemberName(item.memberId).charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <Text style={styles.customSplitName}>
+                      {getMemberName(item.memberId)}
                     </Text>
                   </View>
-                  <Text style={styles.customSplitName}>
-                    {getMemberName(item.memberId)}
-                  </Text>
+                  
+                  <View style={styles.customSplitInputContainer}>
+                    {splitMethod === 'unequal' && (
+                      <Text style={styles.customSplitPrefix}>$</Text>
+                    )}
+                    <TextInput
+                      style={styles.customSplitInput}
+                      keyboardType="decimal-pad"
+                      value={item.value}
+                      onChangeText={(value) => updateCustomSplitValue(item.memberId, value)}
+                      placeholder={splitMethod === 'percentage' ? '0' : '0.00'}
+                      returnKeyType="done"
+                      onSubmitEditing={Keyboard.dismiss}
+                      inputAccessoryViewID={Platform.OS === 'ios' ? 'splitOptionsDoneBtn' : undefined}
+                    />
+                    {splitMethod === 'percentage' && (
+                      <Text style={styles.customSplitSuffix}>%</Text>
+                    )}
+                  </View>
                 </View>
-                
-                <View style={styles.customSplitInputContainer}>
-                  {splitMethod === 'unequal' && (
-                    <Text style={styles.customSplitPrefix}>$</Text>
-                  )}
-                  <TextInput
-                    style={styles.customSplitInput}
-                    keyboardType="numeric"
-                    value={item.value}
-                    onChangeText={(value) => updateCustomSplitValue(item.memberId, value)}
-                    placeholder={splitMethod === 'percentage' ? '0' : '0.00'}
-                  />
-                  {splitMethod === 'percentage' && (
-                    <Text style={styles.customSplitSuffix}>%</Text>
-                  )}
+              )}
+            />
+            
+            {/* Add Keyboard Done button accessory view for iOS */}
+            {Platform.OS === 'ios' && (
+              <InputAccessoryView nativeID="splitOptionsDoneBtn">
+                <View style={styles.keyboardAccessory}>
+                  <TouchableOpacity
+                    style={styles.keyboardDoneButton}
+                    onPress={() => Keyboard.dismiss()}
+                  >
+                    <Text style={styles.keyboardDoneButtonText}>Done</Text>
+                  </TouchableOpacity>
                 </View>
-              </View>
+              </InputAccessoryView>
             )}
-          />
-          
-          <TouchableOpacity 
-            style={styles.confirmButton}
-            onPress={() => setShowCustomSplitModal(false)}
-          >
-            <Text style={styles.confirmButtonText}>Apply Split</Text>
-          </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.confirmButton}
+              onPress={validateAndApplySplit}
+            >
+              <Text style={styles.confirmButtonText}>Apply Split</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
-    </Modal>
-  );
+      </Modal>
+    );
+  };
   
   // Main render
   return (
@@ -2210,7 +2286,7 @@ const handleChangeGroupOrFriend = (item: any) => {
             <Ionicons 
               name={item.type === 'group' ? "people" : "person"} 
               size={16} 
-              color="#0A6EFF" 
+              color="#8A2BE2" 
             />
             <Text style={styles.dropdownItemText}>{item.name}</Text>
           </TouchableOpacity>
@@ -2227,7 +2303,7 @@ const handleChangeGroupOrFriend = (item: any) => {
         {/* Receipt processing indicator */}
         {processingReceipt && (
           <View style={styles.scanningContainer}>
-            <ActivityIndicator size="small" color="#0A6EFF" />
+            <ActivityIndicator size="small" color="#8A2BE2" />
             <Text style={styles.scanningText}>Processing receipt...</Text>
           </View>
         )}
@@ -2286,14 +2362,14 @@ const handleChangeGroupOrFriend = (item: any) => {
             <View style={styles.iconRow}>
               <TouchableOpacity style={styles.iconButton} onPress={handleScanReceipt}>
                 <View style={styles.iconCircle}>
-                  <Ionicons name="scan-outline" size={22} color="#0A6EFF" />
+                  <Ionicons name="scan-outline" size={22} color="#8A2BE2" />
                 </View>
                 <Text style={styles.iconText}>Scan</Text>
               </TouchableOpacity>
               
               <TouchableOpacity style={styles.iconButton} onPress={handleUploadReceipt}>
                 <View style={styles.iconCircle}>
-                  <Ionicons name="image-outline" size={22} color="#0A6EFF" />
+                  <Ionicons name="image-outline" size={22} color="#8A2BE2" />
                 </View>
                 <Text style={styles.iconText}>Upload</Text>
               </TouchableOpacity>
@@ -2303,7 +2379,7 @@ const handleChangeGroupOrFriend = (item: any) => {
                 onPress={() => setShowCategoryModal(true)}
               >
                 <View style={styles.iconCircle}>
-                  <Ionicons name={getCategoryIcon() as any} size={22} color="#0A6EFF" />
+                  <Ionicons name={getCategoryIcon() as any} size={22} color="#8A2BE2" />
                 </View>
                 <Text style={styles.iconText}>{getCategoryName()}</Text>
               </TouchableOpacity>
@@ -2313,7 +2389,7 @@ const handleChangeGroupOrFriend = (item: any) => {
                 onPress={() => setShowDateModal(true)}
               >
                 <View style={styles.iconCircle}>
-                  <Ionicons name="calendar-outline" size={22} color="#0A6EFF" />
+                  <Ionicons name="calendar-outline" size={22} color="#8A2BE2" />
                 </View>
                 <Text style={styles.iconText}>{formatDate(date)}</Text>
               </TouchableOpacity>
@@ -2329,7 +2405,7 @@ const handleChangeGroupOrFriend = (item: any) => {
                 }}
               >
                 <View style={styles.iconCircle}>
-                  <Ionicons name="wallet-outline" size={22} color="#0A6EFF" />
+                  <Ionicons name="wallet-outline" size={22} color="#8A2BE2" />
                 </View>
                 <Text style={styles.iconText} numberOfLines={1}>
                   {paidBy ? `${paidBy.name} paid` : 'Paid by'}
@@ -2344,7 +2420,7 @@ const handleChangeGroupOrFriend = (item: any) => {
                 }}
               >
                 <View style={styles.iconCircle}>
-                  <Ionicons name="people-outline" size={22} color="#0A6EFF" />
+                  <Ionicons name="people-outline" size={22} color="#8A2BE2" />
                 </View>
                 <Text style={styles.iconText}>{getSelectedMembersText()}</Text>
               </TouchableOpacity>
@@ -2357,7 +2433,7 @@ const handleChangeGroupOrFriend = (item: any) => {
                 }}
               >
                 <View style={styles.iconCircle}>
-                  <Ionicons name="pie-chart-outline" size={22} color="#0A6EFF" />
+                  <Ionicons name="pie-chart-outline" size={22} color="#8A2BE2" />
                 </View>
                 <Text style={styles.iconText}>{getSplitMethodText()}</Text>
               </TouchableOpacity>
@@ -2370,7 +2446,7 @@ const handleChangeGroupOrFriend = (item: any) => {
                 }}
               >
                 <View style={styles.iconCircle}>
-                  <Ionicons name="create-outline" size={22} color="#0A6EFF" />
+                  <Ionicons name="create-outline" size={22} color="#8A2BE2" />
                 </View>
                 <Text style={styles.iconText}>
                   {notes ? 'Edit notes' : 'Add notes'}
@@ -2436,7 +2512,6 @@ const handleChangeGroupOrFriend = (item: any) => {
         {renderDateModal()}
         {renderPaidByModal()}
         {renderSplitModal()}
-        {renderSplitInfoModal()}
         {renderMembersModal()}
         {renderNotesModal()}
         {renderCustomSplitModal()}
@@ -2447,6 +2522,12 @@ const handleChangeGroupOrFriend = (item: any) => {
 
 // Styles
 const { width } = Dimensions.get('window');
+
+// Define color constants
+const PURPLE_COLOR = '#8A2BE2'; // Vivid purple
+const PURPLE_LIGHT = '#E6D9F2'; // Light purple background
+const PURPLE_MEDIUM = '#B07EDD'; // Medium purple for hover states
+const BLUE_COLOR = '#0A6EFF'; // Original blue - kept only for Split modal
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -2478,9 +2559,9 @@ const styles = StyleSheet.create({
     padding: 8
   },
   
-  // Context banner styles
+  // Context banner styles - changed from blue to purple
   contextBanner: {
-    backgroundColor: '#0A6EFF',
+    backgroundColor: PURPLE_COLOR,
     paddingVertical: 10,
     paddingHorizontal: 16,
     flexDirection: 'row',
@@ -2497,7 +2578,7 @@ const styles = StyleSheet.create({
     fontWeight: '500'
   },
   scanningText: {
-    color: '#0A6EFF',
+    color: PURPLE_COLOR,
     marginLeft: 10,
     fontSize: 16,
     fontWeight: '500'
@@ -2573,7 +2654,7 @@ const styles = StyleSheet.create({
     fontSize: 14
   },
   
-  // Icon grid styles
+  // Icon grid styles - changed from blue to purple
   iconsGrid: {
     marginTop: 24,
     paddingHorizontal: 16,
@@ -2639,7 +2720,7 @@ const styles = StyleSheet.create({
     borderRadius: 8
   },
   
-  // Bottom action buttons
+  // Bottom action buttons - changed from blue to purple
   footer: {
     flexDirection: 'row',
     backgroundColor: '#fff',
@@ -2667,14 +2748,14 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     flex: 2,
-    backgroundColor: '#0A6EFF',
+    backgroundColor: PURPLE_COLOR,
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center'
   },
   saveButtonDisabled: {
-    backgroundColor: '#0A6EFF80'
+    backgroundColor: PURPLE_COLOR + '80' // 50% opacity
   },
   saveButtonText: {
     color: '#fff',
@@ -2692,7 +2773,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
-    maxHeight: '80%'
+    height: '80%', // Adjust this for your needs
   },
   modalHeader: {
     flexDirection: 'row',
@@ -2709,14 +2790,14 @@ const styles = StyleSheet.create({
     color: '#333'
   },
   
-  // Category modal styles
+  // Category modal styles - changed from blue to purple
   categoryItem: {
     width: width / 3,
     alignItems: 'center',
     padding: 12
   },
   selectedCategoryItem: {
-    backgroundColor: '#f0f8ff',
+    backgroundColor: PURPLE_LIGHT,
     borderRadius: 8
   },
   categoryIcon: {
@@ -2734,11 +2815,11 @@ const styles = StyleSheet.create({
     textAlign: 'center'
   },
   selectedCategoryName: {
-    color: '#0A6EFF',
+    color: PURPLE_COLOR,
     fontWeight: '500'
   },
   
-  // Date modal styles
+  // Date modal styles - changed from blue to purple
   dateOptions: {
     padding: 16
   },
@@ -2756,14 +2837,14 @@ const styles = StyleSheet.create({
     textAlign: 'center'
   },
   dateOptionCustom: {
-    backgroundColor: '#e6f0ff',
+    backgroundColor: PURPLE_LIGHT,
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 8,
     marginBottom: 8
   },
   dateOptionTextCustom: {
-    color: '#0A6EFF',
+    color: PURPLE_COLOR,
     fontSize: 16,
     fontWeight: '500',
     textAlign: 'center'
@@ -2773,7 +2854,7 @@ const styles = StyleSheet.create({
     height: 200
   },
   
-  // Member styles
+  // Member styles - changed from blue to purple
   memberItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2783,13 +2864,13 @@ const styles = StyleSheet.create({
     borderBottomColor: '#eee'
   },
   selectedMemberItem: {
-    backgroundColor: '#f0f8ff'
+    backgroundColor: PURPLE_LIGHT
   },
   memberAvatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#0A6EFF',
+    backgroundColor: PURPLE_COLOR,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12
@@ -2814,11 +2895,11 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   checkboxSelected: {
-    backgroundColor: '#0A6EFF',
-    borderColor: '#0A6EFF'
+    backgroundColor: PURPLE_COLOR,
+    borderColor: PURPLE_COLOR
   },
   
-  // Split modal styles
+  // Split modal styles - KEEP BLUE COLOR for this modal only
   splitOptionItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2841,7 +2922,7 @@ const styles = StyleSheet.create({
     marginBottom: 4
   },
   selectedSplitOptionText: {
-    color: '#0A6EFF'
+    color: BLUE_COLOR
   },
   splitOptionDescription: {
     fontSize: 14,
@@ -2886,9 +2967,9 @@ const styles = StyleSheet.create({
     color: '#333'
   },
   
-  // Confirm button
+  // Confirm button - changed from blue to purple except for Split modal
   confirmButton: {
-    backgroundColor: '#0A6EFF',
+    backgroundColor: PURPLE_COLOR,
     borderRadius: 8,
     paddingVertical: 14,
     alignItems: 'center',
@@ -2900,7 +2981,7 @@ const styles = StyleSheet.create({
     fontWeight: '600'
   },
   
-  // Notes modal styles
+  // Notes modal styles - changed from blue to purple
   notesInput: {
     backgroundColor: '#f5f5f5',
     borderRadius: 8,
@@ -2933,7 +3014,7 @@ const styles = StyleSheet.create({
     color: '#666'
   },
   
-  // Custom split styles
+  // Custom split styles - KEEP BLUE COLORS for Split modal only
   splitTotalContainer: {
     backgroundColor: '#e6f0ff',
     padding: 12,
@@ -2946,12 +3027,12 @@ const styles = StyleSheet.create({
   splitTotalLabel: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#0A6EFF'
+    color: BLUE_COLOR
   },
   splitTotalAmount: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#0A6EFF'
+    color: BLUE_COLOR
   },
   customSplitItem: {
     flexDirection: 'row',
@@ -2971,7 +3052,7 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: '#0A6EFF',
+    backgroundColor: BLUE_COLOR,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 8
@@ -3040,7 +3121,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   noteSaveButton: {
-    backgroundColor: '#0A6EFF',
+    backgroundColor: PURPLE_COLOR,
     borderRadius: 8,
     paddingVertical: 8,
     paddingHorizontal: 16,
@@ -3058,13 +3139,13 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   selectAllButton: {
-    backgroundColor: '#e6f0ff',
+    backgroundColor: PURPLE_LIGHT,
     borderRadius: 8,
     paddingVertical: 8,
     paddingHorizontal: 16,
   },
   selectAllButtonText: {
-    color: '#0A6EFF',
+    color: PURPLE_COLOR,
     fontSize: 14,
     fontWeight: '500',
   },
@@ -3106,6 +3187,37 @@ const styles = StyleSheet.create({
   infoButton: {
     marginRight: 10,
     padding: 4
+  },
+  keyboardAccessory: {
+    backgroundColor: '#f5f5f5',
+    padding: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#ddd',
+    alignItems: 'flex-end'
+  },
+  keyboardDoneButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8
+  },
+  keyboardDoneButtonText: {
+    fontSize: 16,
+    color: BLUE_COLOR, // Keep blue for Split modal
+    fontWeight: '600'
+  },
+  splitErrorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFEBEB',
+    marginHorizontal: 16,
+    marginTop: 8,
+    padding: 8,
+    borderRadius: 8
+  },
+  splitErrorText: {
+    flex: 1,
+    marginLeft: 8,
+    color: '#FF3B30',
+    fontSize: 14
   }
 });
 
