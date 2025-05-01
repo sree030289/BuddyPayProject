@@ -4,7 +4,6 @@ import { Ionicons as Icon } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
-import SharedTabBar from '../components/SharedTabBar';
 import { useAuth } from '../components/AuthContext'; // Import useAuth hook
 import { db } from '../services/firebaseConfig';
 import { formatCurrency } from '../utils/formatCurrency';
@@ -17,6 +16,9 @@ import {
   getDocs,
   orderBy 
 } from 'firebase/firestore';
+
+// Import needed for bottom tab navigation
+import ActivityService from '../services/ActivityService';
 
 // Define group types and their corresponding icons
 const GROUP_TYPES = {
@@ -75,6 +77,31 @@ const FriendDashboardScreen = () => {
   const [directExpenses, setDirectExpenses] = useState<Expense[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // New state for unread activities badge
+  const [unreadActivities, setUnreadActivities] = useState(0);
+
+  // Fetch unread activity count when component mounts
+  useEffect(() => {
+    if (user) {
+      fetchUnreadCount();
+    }
+  }, [user]);
+
+  // Helper function to fetch unread activity count
+  const fetchUnreadCount = async () => {
+    if (!user) return;
+    
+    try {
+      // Use ActivityService to get unread count
+      const count = await ActivityService.getUnreadCount(user.uid);
+      setUnreadActivities(count);
+    } catch (error) {
+      console.error('Error fetching unread activity count:', error);
+      // In case of error, just show 0 unread activities
+      setUnreadActivities(0);
+    }
+  };
 
   // Avatar background color should match with the one from FriendsScreen
   const getAvatarColor = (name: string) => {
@@ -627,9 +654,104 @@ const getOweText = () => {
         <Icon name="add" size={30} color="#fff" />
       </TouchableOpacity>
 
-      {/* Tab Bar placed at the bottom */}
+      {/* Tab Bar with MainDashboard style */}
       <View style={styles.tabBarContainer}>
-        <SharedTabBar activeTab="Friends" />
+        <View style={styles.tabBar}>
+          <TouchableOpacity
+            style={styles.tabItem}
+            onPress={() => navigation.navigate('MainDashboard', { screen: 'Groups' })}
+          >
+            <View style={{
+              width: 32,
+              height: 32,
+              borderRadius: 20,
+              backgroundColor: 'transparent',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}>
+              <Icon name="people-outline" size={22} color="#666" />
+            </View>
+            <Text style={styles.tabLabel}>Groups</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.tabItem}
+            onPress={() => navigation.navigate('MainDashboard', { screen: 'Friends' })}
+          >
+            <View style={{
+              width: 40,
+              height: 40,
+              borderRadius: 20,
+              backgroundColor: 'rgba(144, 97, 249, 0.15)',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}>
+              <Icon name="person" size={22} color="#9061F9" />
+            </View>
+            <Text style={[styles.tabLabel, { color: '#9061F9', fontWeight: '600' }]}>
+              Friends
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.tabItem}
+            onPress={() => navigation.navigate('MainDashboard', { screen: 'Activity' })}
+          >
+            <View>
+              <View style={{
+                width: 32,
+                height: 32,
+                borderRadius: 20,
+                backgroundColor: 'transparent',
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}>
+                <Icon name="time-outline" size={22} color="#666" />
+              </View>
+              {unreadActivities > 0 && (
+                <View style={{
+                  position: 'absolute',
+                  top: -2,
+                  right: -2,
+                  backgroundColor: '#FF3B30',
+                  borderRadius: 10,
+                  minWidth: 16,
+                  height: 16,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  paddingHorizontal: 4,
+                  zIndex: 1
+                }}>
+                  <Text style={{
+                    color: '#fff',
+                    fontSize: 10,
+                    fontWeight: 'bold'
+                  }}>
+                    {unreadActivities > 9 ? '9+' : unreadActivities}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.tabLabel}>Activity</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.tabItem}
+            onPress={() => navigation.navigate('MainDashboard', { screen: 'Account' })}
+          >
+            <View style={{
+              width: 32,
+              height: 32,
+              borderRadius: 20,
+              backgroundColor: 'transparent',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}>
+              <Icon name="person-circle-outline" size={22} color="#666" />
+            </View>
+            <Text style={styles.tabLabel}>Account</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   </SafeAreaView>
@@ -897,6 +1019,27 @@ const styles = StyleSheet.create({
   createGroupButtonText: {
     color: '#fff',
     fontWeight: '500'
+  },
+  tabBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 10,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3
+  },
+  tabItem: {
+    alignItems: 'center'
+  },
+  tabLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4
   }
 });
 

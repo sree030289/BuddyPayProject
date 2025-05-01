@@ -302,7 +302,7 @@ const AddExpenseScreen = () => {
     if (route.params?.groupId) {
       const groupId = route.params.groupId;
       console.log(`Initial load for group: ${groupId}`);
-      fetchGroupMembers();
+      fetchGroupMembers(groupId);
     } 
     // For friend expense
     else if (route.params?.friendId) {
@@ -357,18 +357,21 @@ const AddExpenseScreen = () => {
   };
   
   // Modified fetchGroupMembers function to track group member IDs
-  const fetchGroupMembers = async () => {
-    if (!groupId || !user) {
+  const fetchGroupMembers = async (groupIdParam?: string) => {
+    // Use passed parameter or fallback to state variable
+    const targetGroupId = groupIdParam || groupId;
+    
+    if (!targetGroupId || !user) {
       console.log("Missing groupId or user, cannot fetch members");
       return;
     }
     
-    console.log(`Fetching members for group: ${groupId}`);
+    console.log(`Fetching members for group: ${targetGroupId}`);
     setLoading(true);
     
     try {
       // Get the group document directly
-      const groupRef = doc(db, 'groups', groupId);
+      const groupRef = doc(db, 'groups', targetGroupId);
       const groupSnap = await getDoc(groupRef);
       
       if (groupSnap.exists()) {
@@ -384,13 +387,13 @@ const AddExpenseScreen = () => {
           membersList = groupData.members.map((member: any) => {
             const isCurrentUser = member.uid === user.uid || member.id === user.uid;
             return {
-              uid: member.uid || member.id, // Use uid if available, fall back to id
+              uid: member.uid || member.id,              
               name: isCurrentUser ? 'You' : (member.name || 'Unknown'),
               email: member.email,
               phone: member.phone,
               isAdmin: member.isAdmin,
               balance: member.balance || 0,
-              isSelected: true // By default select all members
+              isSelected: true            
             };
           });
           
@@ -1613,6 +1616,7 @@ const saveFriendExpense = async (expenseData: any) => {
       animationType="slide"
       onRequestClose={() => setShowSplitModal(false)}
     >
+       
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           <View style={styles.modalHeader}>
@@ -1644,6 +1648,7 @@ const saveFriendExpense = async (expenseData: any) => {
                 ]}
                 onPress={() => handleSplitMethodSelect(item.id)}
               >
+               
                 <View style={styles.splitOptionContent}>
                   <Text style={[
                     styles.splitOptionTitle,
@@ -1738,6 +1743,10 @@ const saveFriendExpense = async (expenseData: any) => {
       animationType="slide"
       onRequestClose={() => setShowMembersModal(false)}
     >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           <View style={styles.modalHeader}>
@@ -1857,6 +1866,7 @@ const saveFriendExpense = async (expenseData: any) => {
           </TouchableOpacity>
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
   

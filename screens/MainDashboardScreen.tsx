@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View } from 'react-native';
+import { View, Text } from 'react-native';
 import FriendsScreen from './FriendsScreen';
 import GroupsScreen from './GroupsScreen';
 import ActivityScreen from './ActivityScreen';
@@ -8,17 +8,52 @@ import AccountScreen from './AccountScreen';
 import { Ionicons } from '@expo/vector-icons';
 import { Platform } from 'react-native';
 import { TabParamList } from '../types';
+import { useAuth } from '../components/AuthContext';
+import ActivityService from '../services/ActivityService';
+import { useFocusEffect } from '@react-navigation/native';
 
 const Tab = createBottomTabNavigator<TabParamList>();
 
 interface MainDashboardProps {
-  route?: { params?: { screen?: string } };
+  route?: { params?: { screen?: string, params?: any } };
 }
 
 export default function MainDashboardScreen({ route }: MainDashboardProps) {
+  const { user } = useAuth();
+  const [unreadActivities, setUnreadActivities] = useState(0);
+  const [activityTabVisited, setActivityTabVisited] = useState(false);
+  
   // Get initial screen from params
   const initialParams = route?.params || {};
-  const initialScreen = initialParams.screen || 'Groups'; // Changed default to Groups
+  const initialScreen = initialParams.screen || 'Groups'; // Default to Groups
+  
+  // Fetch unread activity count when component mounts
+  useEffect(() => {
+    if (user) {
+      fetchUnreadCount();
+    }
+  }, [user]);
+
+  // Helper function to fetch unread activity count
+  const fetchUnreadCount = async () => {
+    if (!user) return;
+    
+    // If the Activity tab has been visited, don't show unread count anymore
+    if (activityTabVisited) {
+      setUnreadActivities(0);
+      return;
+    }
+    
+    try {
+      // Use ActivityService to get unread count
+      const count = await ActivityService.getUnreadCount(user.uid);
+      setUnreadActivities(count);
+    } catch (error) {
+      console.error('Error fetching unread activity count:', error);
+      // In case of error, just show 0 unread activities
+      setUnreadActivities(0);
+    }
+  };
   
   // Map any screen name discrepancies
   const getValidTabName = (screenName: string) => {
@@ -57,6 +92,30 @@ export default function MainDashboardScreen({ route }: MainDashboardProps) {
               justifyContent: 'center',
               alignItems: 'center',
             }}>
+              {/* For Activity tab, show a badge if there are unread activities */}
+              {route.name === 'Activity' && unreadActivities > 0 && !focused && !activityTabVisited ? (
+                <View style={{
+                  position: 'absolute',
+                  top: -2,
+                  right: -2,
+                  backgroundColor: '#FF3B30',
+                  borderRadius: 10,
+                  minWidth: 16,
+                  height: 16,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  paddingHorizontal: 4,
+                  zIndex: 1
+                }}>
+                  <Text style={{
+                    color: '#fff',
+                    fontSize: 10,
+                    fontWeight: 'bold'
+                  }}>
+                    {unreadActivities > 9 ? '9+' : unreadActivities}
+                  </Text>
+                </View>
+              ) : null}
               <Ionicons name={iconName as any} size={22} color={color} />
             </View>
           );
@@ -93,7 +152,7 @@ export default function MainDashboardScreen({ route }: MainDashboardProps) {
         options={{
           tabBarLabel: 'Groups',
         }}
-        initialParams={{ insideTabNavigator: true }}
+        initialParams={{ insideTabNavigator: true, ...(initialParams.params || {}) }}
       />
       <Tab.Screen 
         name="Friends" 
@@ -101,7 +160,7 @@ export default function MainDashboardScreen({ route }: MainDashboardProps) {
         options={{
           tabBarLabel: 'Friends',
         }}
-        initialParams={{ insideTabNavigator: true }}
+        initialParams={{ insideTabNavigator: true, ...(initialParams.params || {}) }}
       />
       <Tab.Screen 
         name="Activity" 
@@ -109,7 +168,23 @@ export default function MainDashboardScreen({ route }: MainDashboardProps) {
         options={{
           tabBarLabel: 'Activity',
         }}
-        initialParams={{ insideTabNavigator: true }}
+        initialParams={{ insideTabNavigator: true, ...(initialParams.params || {}) }}
+        listeners={{
+          tabPress: () => {
+            // When user taps on the Activity tab, mark it as visited
+            setActivityTabVisited(true);
+            // Set unread count to 0 since user is viewing activities
+            setUnreadActivities(0);
+          },
+          focus: () => {
+            // When Activity tab gains focus, mark activities as read
+            if (user) {
+              ActivityService.markAllActivitiesAsRead(user.uid);
+              setActivityTabVisited(true);
+              setUnreadActivities(0);
+            }
+          }
+        }}
       />
       <Tab.Screen 
         name="Account" 
@@ -117,7 +192,7 @@ export default function MainDashboardScreen({ route }: MainDashboardProps) {
         options={{
           tabBarLabel: 'Account',
         }}
-        initialParams={{ insideTabNavigator: true }}
+        initialParams={{ insideTabNavigator: true, ...(initialParams.params || {}) }}
       />
     </Tab.Navigator>
   );

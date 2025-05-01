@@ -11,7 +11,11 @@ import {
   FlatList,
   Platform,
   SafeAreaView,
-  Share
+  Share,
+  ScrollView,
+  KeyboardAvoidingView,
+  Keyboard,
+  TouchableWithoutFeedback
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Contacts from 'expo-contacts';
@@ -81,6 +85,7 @@ const AddFriendsScreen = () => {
   const [smsMessage, setSmsMessage] = useState('');
   const [userPhone, setUserPhone] = useState<string | null>(null);
   const [showCountryCodeModal, setShowCountryCodeModal] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   
   // Country codes with flags - FIXED: Simplified and formatted for better display
   const countryCodes: CountryCode[] = [
@@ -99,6 +104,27 @@ const AddFriendsScreen = () => {
     { code: '+55', name: 'Brazil 🇧🇷' },
     { code: '+52', name: 'Mexico 🇲🇽' },
   ];
+
+  // Monitor keyboard visibility
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      'keyboardDidShow',
+      () => {
+        setKeyboardVisible(true);
+      }
+    );
+    const keyboardDidHideListener = Keyboard.addListener(
+      'keyboardDidHide',
+      () => {
+        setKeyboardVisible(false);
+      }
+    );
+
+    return () => {
+      keyboardDidHideListener.remove();
+      keyboardDidShowListener.remove();
+    };
+  }, []);
 
   // Find selected country name
   const getSelectedCountryName = () => {
@@ -421,7 +447,7 @@ const AddFriendsScreen = () => {
     >
       <Text style={styles.countryCodeItemText}>{item.name}</Text>
       {countryCode === item.code && (
-        <Ionicons name="checkmark" size={20} color="#0A6EFF" />
+        <Ionicons name="checkmark" size={20} color="#9061F9" />
       )}
     </TouchableOpacity>
   );
@@ -431,7 +457,7 @@ const AddFriendsScreen = () => {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#0A6EFF" />
+          <Ionicons name="arrow-back" size={24} color="#9061F9" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Add Friends</Text>
         <View style={{ width: 24 }} />
@@ -446,7 +472,7 @@ const AddFriendsScreen = () => {
           <Ionicons 
             name="person-add-outline" 
             size={20} 
-            color={activeTab === 'new' ? "#0A6EFF" : "#888"}
+            color={activeTab === 'new' ? "#9061F9" : "#888"}
           />
           <Text style={[styles.tabText, activeTab === 'new' && styles.activeTabText]}>
             Add New
@@ -460,7 +486,7 @@ const AddFriendsScreen = () => {
           <Ionicons 
             name="people-outline" 
             size={20} 
-            color={activeTab === 'contacts' ? "#0A6EFF" : "#888"}
+            color={activeTab === 'contacts' ? "#9061F9" : "#888"}
           />
           <Text style={[styles.tabText, activeTab === 'contacts' && styles.activeTabText]}>
             From Contacts
@@ -476,146 +502,176 @@ const AddFriendsScreen = () => {
         </View>
       )}
 
-      {/* Tab Content */}
-      <View style={styles.contentContainer}>
-        {/* New Contact Form */}
-        {activeTab === 'new' && (
-          <View style={styles.form}>
-            <Text style={styles.label}>Friend's Name*</Text>
-            <View style={styles.inputContainer}>
-              <Ionicons name="person-outline" size={20} color="#999" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Enter name"
-                value={name}
-                onChangeText={setName}
-                autoCapitalize="words"
-              />
-            </View>
-
-            <Text style={styles.label}>Email Address</Text>
-            <View style={styles.inputContainer}>
-              <Ionicons name="mail-outline" size={20} color="#999" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Enter email"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-            </View>
-
-            <Text style={styles.label}>Phone Number</Text>
-            <View style={styles.phoneContainer}>
-              {/* FIXED: Country code selector now uses a modal instead of picker */}
-              <TouchableOpacity 
-                style={styles.countryCodeContainer}
-                onPress={() => setShowCountryCodeModal(true)}
-              >
-                <Text style={styles.countryCodeText}>{countryCode}</Text>
-                <Ionicons name="chevron-down" size={16} color="#999" />
-              </TouchableOpacity>
-              <View style={styles.phoneInputContainer}>
-                <Ionicons name="call-outline" size={20} color="#999" style={styles.inputIcon} />
-                <TextInput
-                  style={styles.phoneInput}
-                  placeholder="Enter phone number"
-                  value={phone}
-                  onChangeText={setPhone}
-                  keyboardType="phone-pad"
-                />
-              </View>
-            </View>
-
-            <Text style={styles.infoText}>
-              We'll notify your friend about your request, and they'll be able to add you as a friend as well.
-            </Text>
-
-            <TouchableOpacity
-              style={[styles.addButton, (loading || !name) && styles.disabledButton]}
-              onPress={handleAddSingleFriend}
-              disabled={loading || !name}
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.addButtonText}>Add Friend</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Contacts List */}
-        {activeTab === 'contacts' && (
-          <View style={styles.contactsContainer}>
-            {/* Search Bar */}
-            <View style={styles.searchContainer}>
-              <Ionicons name="search" size={20} color="#999" style={styles.searchIcon} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search contacts"
-                value={searchTerm}
-                onChangeText={setSearchTerm}
-                autoCapitalize="none"
-              />
-              {searchTerm.length > 0 && (
-                <TouchableOpacity onPress={() => setSearchTerm('')}>
-                  <Ionicons name="close-circle" size={20} color="#999" />
-                </TouchableOpacity>
-              )}
-            </View>
-            
-            {/* Selection Info */}
-            <View style={styles.selectionInfoContainer}>
-              <Text style={styles.selectionInfoText}>
-                {selectedContacts.length === 0 
-                  ? 'Select friends to add' 
-                  : `${selectedContacts.length} contact${selectedContacts.length > 1 ? 's' : ''} selected`}
-              </Text>
-            </View>
-
-            {loading ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#0A6EFF" />
-                <Text style={styles.loadingText}>Loading contacts...</Text>
-              </View>
-            ) : (
-              <FlatList
-                data={filteredContacts}
-                renderItem={renderContactItem}
-                keyExtractor={(item) => item.id}
-                contentContainerStyle={styles.contactsList}
-                ListEmptyComponent={
-                  <View style={styles.emptyContainer}>
-                    <Ionicons name="people-outline" size={40} color="#ccc" />
-                    <Text style={styles.emptyText}>
-                      {searchTerm ? 'No contacts found' : 'No contacts available'}
-                    </Text>
+      {/* Main Content with KeyboardAvoidingView */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.keyboardAvoidingContainer}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 20}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          {/* Tab Content */}
+          <View style={styles.contentContainer}>
+            {/* New Contact Form */}
+            {activeTab === 'new' && (
+              <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.scrollContentContainer}>
+                <View style={styles.form}>
+                  <Text style={styles.label}>Friend's Name*</Text>
+                  <View style={styles.inputContainer}>
+                    <Ionicons name="person-outline" size={20} color="#999" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Enter name"
+                      value={name}
+                      onChangeText={setName}
+                      autoCapitalize="words"
+                      returnKeyType="next"
+                    />
                   </View>
-                }
-              />
+
+                  <Text style={styles.label}>Email Address</Text>
+                  <View style={styles.inputContainer}>
+                    <Ionicons name="mail-outline" size={20} color="#999" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Enter email"
+                      value={email}
+                      onChangeText={setEmail}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      returnKeyType="next"
+                    />
+                  </View>
+
+                  <Text style={styles.label}>Phone Number</Text>
+                  <View style={styles.phoneContainer}>
+                    <TouchableOpacity 
+                      style={styles.countryCodeContainer}
+                      onPress={() => setShowCountryCodeModal(true)}
+                    >
+                      <Text style={styles.countryCodeText}>{countryCode}</Text>
+                      <Ionicons name="chevron-down" size={16} color="#999" />
+                    </TouchableOpacity>
+                    <View style={styles.phoneInputContainer}>
+                      <Ionicons name="call-outline" size={20} color="#999" style={styles.inputIcon} />
+                      <TextInput
+                        style={styles.phoneInput}
+                        placeholder="Enter phone number"
+                        value={phone}
+                        onChangeText={setPhone}
+                        keyboardType="phone-pad"
+                        returnKeyType="done"
+                        onSubmitEditing={Keyboard.dismiss}
+                      />
+                    </View>
+                  </View>
+
+                  <Text style={styles.infoText}>
+                    We'll notify your friend about your request, and they'll be able to add you as a friend as well.
+                  </Text>
+
+                  {/* Add Button - always visible */}
+                  <TouchableOpacity
+                    style={[styles.addButton, (loading || !name) && styles.disabledButton]}
+                    onPress={handleAddSingleFriend}
+                    disabled={loading || !name}
+                  >
+                    {loading ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.addButtonText}>Add Friend</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
             )}
 
-            {/* Add Button for Contacts */}
-            {selectedContacts.length > 0 && (
-              <TouchableOpacity
-                style={styles.addButton}
-                onPress={handleAddMultipleContacts}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.addButtonText}>
-                    Add {selectedContacts.length} Contact{selectedContacts.length > 1 ? 's' : ''}
+            {/* Contacts List */}
+            {activeTab === 'contacts' && (
+              <View style={styles.contactsContainer}>
+                {/* Search Bar */}
+                <View style={styles.searchContainer}>
+                  <Ionicons name="search" size={20} color="#999" style={styles.searchIcon} />
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Search contacts"
+                    value={searchTerm}
+                    onChangeText={setSearchTerm}
+                    autoCapitalize="none"
+                    returnKeyType="search"
+                  />
+                  {searchTerm.length > 0 && (
+                    <TouchableOpacity onPress={() => setSearchTerm('')}>
+                      <Ionicons name="close-circle" size={20} color="#999" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+                
+                {/* Selection Info */}
+                <View style={styles.selectionInfoContainer}>
+                  <Text style={styles.selectionInfoText}>
+                    {selectedContacts.length === 0 
+                      ? 'Select friends to add' 
+                      : `${selectedContacts.length} contact${selectedContacts.length > 1 ? 's' : ''} selected`}
                   </Text>
+                </View>
+
+                {loading ? (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color="#9061F9" />
+                    <Text style={styles.loadingText}>Loading contacts...</Text>
+                  </View>
+                ) : (
+                  <FlatList
+                    data={filteredContacts}
+                    renderItem={renderContactItem}
+                    keyExtractor={(item) => item.id}
+                    contentContainerStyle={styles.contactsList}
+                    ListEmptyComponent={
+                      <View style={styles.emptyContainer}>
+                        <Ionicons name="people-outline" size={40} color="#ccc" />
+                        <Text style={styles.emptyText}>
+                          {searchTerm ? 'No contacts found' : 'No contacts available'}
+                        </Text>
+                      </View>
+                    }
+                  />
                 )}
-              </TouchableOpacity>
+
+                {/* Add Button for Contacts - always visible, but we'll position it */}
+                {selectedContacts.length > 0 && (
+                  <View style={styles.floatingButtonContainer}>
+                    <TouchableOpacity
+                      style={styles.addButton}
+                      onPress={handleAddMultipleContacts}
+                      disabled={loading}
+                    >
+                      {loading ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={styles.addButtonText}>
+                          Add {selectedContacts.length} Contact{selectedContacts.length > 1 ? 's' : ''}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
             )}
           </View>
-        )}
-      </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+
+      {/* Floating keyboard-aware button for mobile tab when keyboard is visible */}
+      {activeTab === 'new' && keyboardVisible && (
+        <View style={styles.keyboardButtonContainer}>
+          <TouchableOpacity 
+            style={styles.keyboardDoneButton}
+            onPress={() => Keyboard.dismiss()}
+          >
+            <Text style={styles.keyboardDoneText}>Done</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* SMS Modal */}
       <Modal
@@ -661,7 +717,7 @@ const AddFriendsScreen = () => {
         </View>
       </Modal>
 
-      {/* Country Code Modal - ADDED */}
+      {/* Country Code Modal */}
       <Modal
         visible={showCountryCodeModal}
         transparent={true}
@@ -699,30 +755,30 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12
+    paddingVertical: 8 // Reduced padding
   },
   backButton: {
-    padding: 8
+    padding: 6
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18, // Reduced from 20
+    fontWeight: '600',
     color: '#333'
   },
   tabContainer: {
     flexDirection: 'row',
     backgroundColor: '#f5f5f5',
-    borderRadius: 10,
-    margin: 16,
-    padding: 4
+    borderRadius: 8, // Reduced from 10
+    margin: 12, // Reduced from 16
+    padding: 3 // Reduced from 4
   },
   tab: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: 8
+    paddingVertical: 6, // Reduced from 8
+    borderRadius: 6 // Reduced from 8
   },
   activeTab: {
     backgroundColor: '#fff',
@@ -734,73 +790,90 @@ const styles = StyleSheet.create({
   },
   tabText: {
     color: '#888',
-    marginLeft: 8,
-    fontWeight: '500'
+    marginLeft: 6, // Reduced from 8
+    fontWeight: '500',
+    fontSize: 13 // Added explicit font size
   },
   activeTabText: {
-    color: '#0A6EFF'
+    color: '#9061F9'
   },
   errorContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFEBEE',
-    padding: 12,
-    marginHorizontal: 16,
-    borderRadius: 10,
-    marginBottom: 12
+    padding: 10, // Reduced from 12
+    marginHorizontal: 12, // Reduced from 16
+    borderRadius: 8, // Reduced from 10
+    marginBottom: 10 // Reduced from 12
   },
   errorText: {
     marginLeft: 8,
     color: '#F44336',
-    flex: 1
+    flex: 1,
+    fontSize: 12 // Reduced font size
+  },
+  // Modified keyboard avoiding container with more appropriate settings
+  keyboardAvoidingContainer: {
+    flex: 1,
   },
   contentContainer: {
     flex: 1,
-    paddingHorizontal: 16
+    paddingHorizontal: 12 // Reduced from 16
+  },
+  // ScrollView for form with adjusted padding
+  scrollContainer: {
+    flex: 1,
+  },
+  scrollContentContainer: {
+    paddingBottom: 20, // Reduced from 30
+  },
+  form: {
+    flex: 1,
   },
   label: {
-    fontSize: 14,
+    fontSize: 13, // Reduced from 14
     fontWeight: '500',
     color: '#666',
-    marginBottom: 8
+    marginBottom: 6 // Reduced from 8
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#ddd',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 20
+    borderRadius: 8, // Reduced from 10
+    paddingVertical: 8, // Reduced vertical padding 
+    paddingHorizontal: 10, // Reduced horizontal padding
+    marginBottom: 14 // Reduced from 20
   },
   inputIcon: {
-    marginRight: 10
+    marginRight: 8, // Reduced from 10
+    fontSize: 18 // Explicitly set icon size
   },
   input: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 14, // Reduced from 16
     color: '#333'
   },
   phoneContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20
+    marginBottom: 14 // Reduced from 20
   },
-  // FIXED: Updated countryCodeContainer to work with TouchableOpacity
   countryCodeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    width: 100,
+    width: 90, // Reduced from 100
     borderWidth: 1,
     borderColor: '#ddd',
-    borderRadius: 10,
-    marginRight: 10,
-    height: 50,
-    paddingHorizontal: 12
+    borderRadius: 8, // Reduced from 10
+    marginRight: 8, // Reduced from 10
+    height: 42, // Reduced from 50
+    paddingHorizontal: 10 // Reduced from 12
   },
   countryCodeText: {
-    fontSize: 16,
+    fontSize: 14, // Reduced from 16
     color: '#333'
   },
   phoneInputContainer: {
@@ -809,37 +882,66 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#ddd',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    height: 50
+    borderRadius: 8, // Reduced from 10
+    paddingHorizontal: 10, // Reduced from 12
+    height: 42 // Reduced from 50
   },
   phoneInput: {
     flex: 1,
-    height: 50,
-    fontSize: 16
+    height: 42, // Reduced from 50
+    fontSize: 14 // Reduced from 16
   },
   infoText: {
-    fontSize: 14,
+    fontSize: 12, // Reduced from 14
     color: '#666',
-    marginBottom: 20,
-    lineHeight: 20
+    marginBottom: 14, // Reduced from 20
+    lineHeight: 16 // Reduced from 20
   },
   addButton: {
-    backgroundColor: '#0A6EFF',
-    paddingVertical: 14,
-    borderRadius: 10,
+    backgroundColor: '#9061F9',
+    paddingVertical: 12, // Reduced from 14
+    borderRadius: 8, // Reduced from 10
     alignItems: 'center',
-    marginTop: 'auto',
-    marginBottom: 20
+    marginTop: 8, // Reduced from 10
+    marginBottom: 16 // Reduced from 20
   },
   disabledButton: {
-    backgroundColor: '#90CAF9',
+    backgroundColor: 'rgba(144, 97, 249, 0.5)',
     opacity: 0.6
   },
   addButtonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 14, // Reduced from 16
     fontWeight: '600'
+  },
+  // Updated keyboard-aware floating button that stays closer to keyboard
+  keyboardButtonContainer: {
+    position: 'absolute',
+    right: 12,
+    bottom: Platform.OS === 'ios' ? 2 : 10, // Adjust bottom position based on platform
+    padding: 4,
+    borderRadius: 16,
+    zIndex: 5, // Ensure it stays above other content
+  },
+  keyboardDoneButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    backgroundColor: '#9061F9',
+    borderRadius: 12,
+  },
+  keyboardDoneText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 12, // Reduced from 14
+  },
+  // Floating button for contacts tab
+  floatingButtonContainer: {
+    position: 'absolute',
+    bottom: 16, // Reduced from 20
+    left: 0,
+    right: 0,
+    paddingHorizontal: 12, // Reduced from 16
+    backgroundColor: 'transparent',
   },
   // Contacts tab styles
   contactsContainer: {
@@ -849,65 +951,65 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f5f5f5',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    marginBottom: 16
+    borderRadius: 8, // Reduced from 10
+    paddingHorizontal: 10, // Reduced from 12
+    marginBottom: 12 // Reduced from 16
   },
   searchIcon: {
-    marginRight: 10
+    marginRight: 8 // Reduced from 10
   },
   searchInput: {
     flex: 1,
-    height: 50,
-    fontSize: 16
+    height: 42, // Reduced from 50
+    fontSize: 14 // Reduced from 16
   },
   selectionInfoContainer: {
-    marginBottom: 12
+    marginBottom: 8 // Reduced from 12
   },
   selectionInfoText: {
-    fontSize: 14,
+    fontSize: 13, // Reduced from 14
     color: '#666'
   },
   contactsList: {
-    paddingBottom: 100
+    paddingBottom: 80 // Reduced from 100
   },
   contactItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
+    paddingVertical: 10, // Reduced from 12
+    paddingHorizontal: 6, // Reduced from 8
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
-    borderRadius: 8
+    borderRadius: 6 // Reduced from 8
   },
   selectedContactItem: {
-    backgroundColor: '#E3F2FD'
+    backgroundColor: 'rgba(144, 97, 249, 0.1)'
   },
   contactInfo: {
     flex: 1
   },
   contactName: {
-    fontSize: 16,
+    fontSize: 14, // Reduced from 16
     fontWeight: '500',
     color: '#333'
   },
   contactDetail: {
-    fontSize: 13,
+    fontSize: 12, // Reduced from 13
     color: '#666',
-    marginTop: 4
+    marginTop: 2 // Reduced from 4
   },
   checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 20, // Reduced from 24
+    height: 20, // Reduced from 24
+    borderRadius: 10, // Reduced from 12
     borderWidth: 1,
-    borderColor: '#0A6EFF',
+    borderColor: '#9061F9',
     justifyContent: 'center',
     alignItems: 'center'
   },
   checkedBox: {
-    backgroundColor: '#0A6EFF'
+    backgroundColor: '#9061F9'
   },
   loadingContainer: {
     flex: 1,
@@ -915,19 +1017,20 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   loadingText: {
-    marginTop: 8,
-    color: '#666'
+    marginTop: 6, // Reduced from 8
+    color: '#666',
+    fontSize: 12
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 100
+    paddingTop: 80 // Reduced from 100
   },
   emptyText: {
-    marginTop: 12,
+    marginTop: 10, // Reduced from 12
     color: '#999',
-    fontSize: 16
+    fontSize: 14 // Reduced from 16
   },
   // SMS Modal styles
   modalContainer: {
@@ -937,9 +1040,9 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: 'white',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
+    borderTopLeftRadius: 16, // Reduced from 20
+    borderTopRightRadius: 16, // Reduced from 20
+    padding: 16, // Reduced from 20
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.25,
@@ -947,55 +1050,55 @@ const styles = StyleSheet.create({
     elevation: 5
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 18, // Reduced from 20
     fontWeight: 'bold',
-    marginBottom: 8,
+    marginBottom: 6, // Reduced from 8
     textAlign: 'center',
     color: '#333'
   },
   modalSubtitle: {
-    fontSize: 16,
+    fontSize: 14, // Reduced from 16
     color: '#666',
-    marginBottom: 20,
+    marginBottom: 16, // Reduced from 20
     textAlign: 'center'
   },
   smsPreviewContainer: {
     backgroundColor: '#f5f5f5',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 20,
+    padding: 12, // Reduced from 16
+    borderRadius: 8, // Reduced from 12
+    marginBottom: 16, // Reduced from 20
     borderWidth: 1,
     borderColor: '#eee'
   },
   smsPreviewText: {
-    fontSize: 14,
+    fontSize: 13, // Reduced from 14
     color: '#333',
-    lineHeight: 20
+    lineHeight: 18 // Reduced from 20
   },
   sendButton: {
-    backgroundColor: '#0A6EFF',
+    backgroundColor: '#9061F9',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 14,
-    borderRadius: 10,
-    marginBottom: 12
+    padding: 12, // Reduced from 14
+    borderRadius: 8, // Reduced from 10
+    marginBottom: 10 // Reduced from 12
   },
   sendButtonText: {
     color: '#fff',
     fontWeight: '600',
-    marginLeft: 8,
-    fontSize: 16
+    marginLeft: 6, // Reduced from 8
+    fontSize: 14 // Reduced from 16
   },
   skipButton: {
-    padding: 12,
+    padding: 10, // Reduced from 12
     alignItems: 'center'
   },
   skipButtonText: {
     color: '#666',
-    fontSize: 14
+    fontSize: 13 // Reduced from 14
   },
-  // Country Code Modal Styles - ADDED
+  // Country Code Modal Styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -1003,36 +1106,36 @@ const styles = StyleSheet.create({
   },
   countryCodeModal: {
     backgroundColor: 'white',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '70%'
+    borderTopLeftRadius: 16, // Reduced from 20
+    borderTopRightRadius: 16, // Reduced from 20
+    maxHeight: '60%' // Reduced from 70%
   },
   countryCodeModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    padding: 12, // Reduced from 16
     borderBottomWidth: 1,
     borderBottomColor: '#eee'
   },
   countryCodeModalTitle: {
-    fontSize: 18,
+    fontSize: 16, // Reduced from 18
     fontWeight: 'bold',
     color: '#333'
   },
   countryCodeList: {
-    paddingBottom: 20
+    paddingBottom: 16 // Reduced from 20
   },
   countryCodeItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    padding: 12, // Reduced from 16
     borderBottomWidth: 1,
     borderBottomColor: '#eee'
   },
   countryCodeItemText: {
-    fontSize: 16,
+    fontSize: 14, // Reduced from 16
     color: '#333'
   }
 });

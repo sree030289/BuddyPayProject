@@ -9,10 +9,11 @@ import {
   StatusBar,
   TouchableOpacity,
   RefreshControl,
-  Platform
+  Platform,
+  Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '../components/AuthContext';
 import { 
@@ -28,8 +29,8 @@ import {
   DocumentData
 } from 'firebase/firestore';
 import { db } from '../services/firebaseConfig';
-import SharedTabBar from '../components/SharedTabBar';
 import { RootStackParamList } from '../types';
+import ActivityService from '../services/ActivityService';
 
 // Define navigation prop type
 type ActivityScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -79,12 +80,53 @@ const ActivityScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Mark all activities as read when screen gains focus
+  useFocusEffect(
+    React.useCallback(() => {
+      if (user) {
+        // Mark all activities as read when the user views this screen
+        markAllActivitiesAsRead();
+        // Also fetch activities to update the UI
+        fetchActivities();
+      }
+      return () => {
+        // Clean up if needed
+      };
+    }, [user])
+  );
+
   // Fetch activities when the component mounts and when user changes
   useEffect(() => {
     if (user) {
       fetchActivities();
     }
   }, [user]);
+
+  // Mark all activities as read
+  const markAllActivitiesAsRead = async () => {
+    if (!user) return;
+    
+    try {
+      await ActivityService.markAllActivitiesAsRead(user.uid);
+      // Update any unread activities in our local state to read
+      setActivities(prevActivities => 
+        prevActivities.map(activity => ({
+          ...activity,
+          read: true
+        }))
+      );
+    } catch (error) {
+      console.error('Error marking activities as read:', error);
+    }
+  };
+
+  const showSearchComingSoon = () => {
+    Alert.alert(
+      "Coming Soon",
+      "Search functionality will be available in a future update.",
+      [{ text: "OK" }]
+    );
+  };
 
   const fetchActivities = async () => {
     if (!user) return;
@@ -430,7 +472,10 @@ const ActivityScreen = () => {
         if (activity.data.friendId) {
           navigation.navigate('FriendsDashboardScreen', {
             friendId: activity.data.friendId,
-            friendName: activity.data.friendName || 'Friend'
+            friendName: activity.data.friendName || 'Friend',
+            totalOwed: 0, // This will be recalculated on the dashboard
+            groups: [], // This will be reloaded on the dashboard
+            refresh: true
           });
         }
         break;
@@ -482,7 +527,7 @@ const ActivityScreen = () => {
     return (
       <SafeAreaView style={{flex: 1, backgroundColor: '#fff'}}>
         <View style={[styles.screenContainer, styles.loadingContainer]}>
-          <ActivityIndicator size="large" color="#0A6EFF" />
+          <ActivityIndicator size="large" color="#9061F9" />
           <Text style={styles.loadingText}>Loading activity...</Text>
         </View>
       </SafeAreaView>
@@ -494,17 +539,17 @@ const ActivityScreen = () => {
       <StatusBar barStyle="dark-content" />
       <View style={styles.screenContainer}>
         {/* Header */}
-        <View style={styles.topBar}>
-          <Text style={styles.topBarTitle}>Activity</Text>
-          <TouchableOpacity>
-            <Ionicons name="filter-outline" size={22} color="#fff" />
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Activity</Text>
+          <TouchableOpacity onPress={showSearchComingSoon}>
+            <Ionicons name="search-outline" size={24} color="#9061F9" />
           </TouchableOpacity>
         </View>
 
         {/* Activity Feed */}
         {loading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#0A6EFF" />
+            <ActivityIndicator size="large" color="#9061F9" />
             <Text style={styles.loadingText}>Loading activity...</Text>
           </View>
         ) : (
@@ -521,15 +566,12 @@ const ActivityScreen = () => {
               <RefreshControl
                 refreshing={refreshing}
                 onRefresh={handleRefresh}
-                colors={['#0A6EFF']}
-                tintColor="#0A6EFF"
+                colors={['#9061F9']}
+                tintColor="#9061F9"
               />
             }
           />
         )}
-        
-        {/* Tab Bar at the bottom */}
-        <SharedTabBar activeTab="Activity" />
       </View>
     </SafeAreaView>
   );
@@ -540,21 +582,18 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 20 : 10,
-    paddingBottom: 60 // Space for tab bar
   },
-  topBar: {
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#0A6EFF',
-    padding: 15,
-    borderRadius: 10,
-    marginHorizontal: 20,
-    marginBottom: 20
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    marginBottom: 10,
   },
-  topBarTitle: {
-    color: '#fff',
-    fontSize: 18,
+  headerTitle: {
+    color: '#9061F9',
+    fontSize: 24,
     fontWeight: 'bold'
   },
   loadingContainer: {
@@ -585,7 +624,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: 20,
-    paddingBottom: 20
+    paddingBottom: 100 // Add extra padding for tab bar
   },
   emptyListContent: {
     flex: 1
@@ -626,7 +665,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#0A6EFF',
+    backgroundColor: '#9061F9',
     marginTop: 6
   }
 });

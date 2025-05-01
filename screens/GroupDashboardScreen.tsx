@@ -148,6 +148,7 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
   const [showBalanceSummaryModal, setShowBalanceSummaryModal] = useState(false);
   const [balanceSummaries, setBalanceSummaries] = useState<{name: string, amount: number}[]>([]);
   const [currentMemberBalances, setCurrentMemberBalances] = useState<Record<string, number>>({});
+  const [unreadActivities, setUnreadActivities] = useState(0); // Adding this for the notification badge
 
   // Handler for back button to handle 'refreshGroupsOnReturn' flag
   useFocusEffect(
@@ -959,8 +960,105 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
       {renderFilterModal()}
       {renderBalanceSummaryModal()}
       
-      {/* Tab Bar - Using existing SharedTabBar */}
-      <SharedTabBar activeTab="Groups" />
+      {/* Tab Bar with MainDashboard style */}
+      <View style={styles.tabBarContainer}>
+        <View style={styles.tabBar}>
+          <TouchableOpacity
+            style={styles.tabItem}
+            onPress={() => navigation.navigate('MainDashboard', { screen: 'Groups' })}
+          >
+            <View style={{
+              width: 40,
+              height: 40,
+              borderRadius: 20,
+              backgroundColor: 'rgba(144, 97, 249, 0.15)',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}>
+              <Icon name="people" size={22} color="#9061F9" />
+            </View>
+            <Text style={[styles.tabLabel, { color: '#9061F9', fontWeight: '600' }]}>
+              Groups
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.tabItem}
+            onPress={() => navigation.navigate('MainDashboard', { screen: 'Friends' })}
+          >
+            <View style={{
+              width: 32,
+              height: 32,
+              borderRadius: 20,
+              backgroundColor: 'transparent',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}>
+              <Icon name="person-outline" size={22} color="#666" />
+            </View>
+            <Text style={styles.tabLabel}>Friends</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.tabItem}
+            onPress={() => navigation.navigate('MainDashboard', { screen: 'Activity' })}
+          >
+            <View>
+              <View style={{
+                width: 32,
+                height: 32,
+                borderRadius: 20,
+                backgroundColor: 'transparent',
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}>
+                <Icon name="time-outline" size={22} color="#666" />
+              </View>
+              {unreadActivities > 0 && (
+                <View style={{
+                  position: 'absolute',
+                  top: -2,
+                  right: -2,
+                  backgroundColor: '#FF3B30',
+                  borderRadius: 10,
+                  minWidth: 16,
+                  height: 16,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  paddingHorizontal: 4,
+                  zIndex: 1
+                }}>
+                  <Text style={{
+                    color: '#fff',
+                    fontSize: 10,
+                    fontWeight: 'bold'
+                  }}>
+                    {unreadActivities > 9 ? '9+' : unreadActivities}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.tabLabel}>Activity</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.tabItem}
+            onPress={() => navigation.navigate('MainDashboard', { screen: 'Account' })}
+          >
+            <View style={{
+              width: 32,
+              height: 32,
+              borderRadius: 20,
+              backgroundColor: 'transparent',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}>
+              <Icon name="person-circle-outline" size={22} color="#666" />
+            </View>
+            <Text style={styles.tabLabel}>Account</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
     </SafeAreaView>
   );
 };
@@ -1622,8 +1720,29 @@ const styles = StyleSheet.create({
   },
   memberViewIcon: {
     marginRight: 6
+  },
+  tabBarContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0
+  },
+  tabBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: '#fff',
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#eee'
+  },
+  tabItem: {
+    alignItems: 'center'
+  },
+  tabLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4
   }
-  
 });
 
 export default GroupDashboardScreen;
