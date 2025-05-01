@@ -20,6 +20,7 @@ import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firesto
 import { db } from '../services/firebaseConfig';
 import { useAuth } from '../components/AuthContext';
 import FriendService from '../services/FriendService';
+import ActivityService from '../services/ActivityService';
 
 // Define app navigation types
 type RootStackParamList = {
@@ -288,7 +289,12 @@ const AddFriendsScreen = () => {
       
       // Prepare invitation message
       const inviteMessage = `${user.displayName || 'Someone'} has invited you to join BuddyPay. Download the app to split expenses with friends: https://buddypay.app/invite`;
-      
+      ActivityService.logFriendAdded(
+        user.uid,
+        user.displayName || 'You',
+        friendId,
+        name.trim()
+      );
       setLoading(false);
       
       if (fullPhone) {

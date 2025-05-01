@@ -20,6 +20,7 @@ import { db } from '../services/firebaseConfig';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../components/AuthContext'; // Import useAuth hook
+import ActivityService from '../services/ActivityService';
 
 interface CreateGroupScreenProps {
   navigation: any;
@@ -180,7 +181,13 @@ const CreateGroupScreen = ({ navigation, route }: CreateGroupScreenProps) => {
   
       // Create a new group and get the reference
       const groupRef = await addDoc(collection(db, 'groups'), groupData);
-      
+      // Log activity
+      ActivityService.logGroupCreated(
+        user.uid,
+        user.displayName || 'You',
+        groupRef.id,
+        groupName.trim()
+      );
       // Navigate to the group dashboard with a flag to refresh the groups list when returning
       navigation.replace('GroupDashboardScreen', {
         groupId: groupRef.id,

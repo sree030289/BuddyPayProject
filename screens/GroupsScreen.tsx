@@ -1,4 +1,4 @@
-// Updated GroupsScreen.tsx with GroupService integration
+// Updated GroupsScreen.tsx with no card blocks and colorful thin lines
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -10,12 +10,14 @@ import {
   StatusBar,
   SafeAreaView,
   Platform,
-  Alert
+  Modal,
+  Image
 } from 'react-native';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { useAuth } from '../components/AuthContext';
 import GroupService from '../services/GroupService';
 import { useFocusEffect } from '@react-navigation/native';
+import { formatCurrency } from '../utils/formatCurrency';
 
 interface GroupsScreenProps {
   navigation: any;
@@ -85,10 +87,12 @@ const GroupsScreen = ({ navigation, route }: GroupsScreenProps) => {
       }
     });
   };
+  
   const applyFilter = (filterOption: string | null) => {
     setFilter(filterOption);
     setFilterVisible(false);
   };
+
   const fetchGroups = async () => {
     if (!user?.email || !user?.uid) {
       setError('User email not found');
@@ -106,9 +110,28 @@ const GroupsScreen = ({ navigation, route }: GroupsScreenProps) => {
       console.log('Fetched groups:', groupsList.length);
       setGroups(groupsList);
       
-      // Calculate total owed across all groups
-      const total = groupsList.reduce((sum, group) => sum + (group.totalAmount || 0), 0);
-      setTotalOwed(total);
+      // Calculate total owed across all groups based on user's balance in each group
+      let totalBalance = 0;
+      groupsList.forEach(group => {
+        // Check if we have members array with balance information
+        if (group.members && Array.isArray(group.members)) {
+          const userMember = group.members.find((m) => 
+            m.uid === user.uid || 
+            (m.email && m.email === user.email)
+          );
+          
+          if (userMember) {
+            // Add user's balance in this group to total
+            totalBalance += (userMember.balance || 0);
+          }
+        } else if (group.totalAmount) {
+          // Fallback to group's totalAmount if no members array with user balance
+          totalBalance += group.totalAmount;
+        }
+      });
+      
+      console.log('Total balance across all groups:', totalBalance);
+      setTotalOwed(totalBalance);
       
       setLoading(false);
     } catch (e) {
@@ -122,142 +145,144 @@ const GroupsScreen = ({ navigation, route }: GroupsScreenProps) => {
     navigation.navigate('JoinGroupScreen');
   };
 
-// Update the renderGroup function in GroupsScreen.tsx to handle balances correctly
-const renderGroup = ({ item }: { item: any }) => {
-  // Define group type colors
-  const typeColors: {[key: string]: string} = {
-    'trip': '#4A90E2',
-    'home': '#50C878',
-    'couple': '#FF6B81',
-    'friends': '#9D65C9',
-    'flatmate': '#FF9642',
-    'apartment': '#8A2BE2',
-    'other': '#607D8B'
-  };
-  
-  // Use type color or fallback to random color based on name
-  const bgColors = ['#3F51B5', '#4CAF50', '#FF9800', '#9C27B0', '#F44336', '#009688'];
-  const typeColor = item.type && typeColors[item.type] 
-    ? typeColors[item.type] 
-    : bgColors[item.name.charCodeAt(0) % bgColors.length];
-  
-  // Calculate the user's balance in this group
-  let userBalance = 0;
-  if (item.members && Array.isArray(item.members)) {
-    const userMember = item.members.find((m: any) => m.uid === user?.uid);
-    if (userMember) {
-      userBalance = userMember.balance || 0;
+  // Update the renderGroup function to use subtle divider lines
+  const renderGroup = ({ item, index }: { item: any, index: number }) => {
+    // Calculate the user's balance in this group
+    let userBalance = 0;
+    if (item.members && Array.isArray(item.members)) {
+      const userMember = item.members.find((m: any) => m.uid === user?.uid);
+      if (userMember) {
+        userBalance = userMember.balance || 0;
+      }
+    } else {
+      userBalance = item.totalAmount || 0;
     }
-  } else {
-    // If no members array, use totalAmount directly
-    userBalance = item.totalAmount || 0;
-  }
-  
-  // Determine if the amount should be shown in green (owed), red (owe), or gray (settled)
-  const amountColor = 
-    userBalance > 0 ? '#4CAF50' : 
-    userBalance < 0 ? '#F44336' : 
-    '#757575';
-  
-  return (
-    <TouchableOpacity
-      style={styles.groupCard}
-      onPress={() => {
-        // Navigate to GroupDashboard
-        navigation.navigate('GroupDashboardScreen', {
-          groupId: item.id,
-          groupName: item.name,
-          groupType: item.type || 'other',
-          totalAmount: userBalance
-        });
-      }}
-    >
-      <View style={[styles.groupIcon, { backgroundColor: typeColor }]}>
-        {/* Show icon based on group type */}
-        {item.type === 'trip' && <Icon name="airplane" size={24} color="#fff" />}
-        {item.type === 'home' && <Icon name="home" size={24} color="#fff" />}
-        {item.type === 'couple' && <Icon name="heart" size={24} color="#fff" />}
-        {item.type === 'friends' && <Icon name="people" size={24} color="#fff" />}
-        {item.type === 'flatmate' && <Icon name="bed" size={24} color="#fff" />}
-        {item.type === 'apartment' && <Icon name="business" size={24} color="#fff" />}
-        {(!item.type || item.type === 'other') && <Text style={styles.groupInitial}>{item.name?.[0]}</Text>}
+    
+    // Get emoji for group type
+    const getGroupEmoji = (type: string) => {
+      switch (type) {
+        case 'trip': return '✈️';
+        case 'home': return '🏠';
+        case 'couple': return '❤️';
+        case 'friends': return '👥';
+        case 'flatmate': return '🛌';
+        case 'apartment': return '🏢';
+        default: return '👥';
+      }
+    };
+    
+    // Get icon background color - using lighter purple for background
+    const getIconBgColor = () => 'rgba(144, 97, 249, 0.1)'; // Light purple background
+    
+    // Determine text and line color based on balance
+    const getLineAndTextColor = () => {
+      if (userBalance > 0) {
+        return '#00C853'; // Green for "gets back"
+      } else if (userBalance < 0) {
+        return '#FF5252'; // Red for "owes"
+      } else {
+        return '#BDBDBD'; // Gray for "settled"
+      }
+    };
+    
+    const colorForLine = getLineAndTextColor();
+    const amountColor = getLineAndTextColor();
+    
+    return (
+      <View>
+        <TouchableOpacity
+          style={styles.groupItemNew}
+          onPress={() => {
+            navigation.navigate('GroupDashboardScreen', {
+              groupId: item.id,
+              groupName: item.name,
+              groupType: item.type || 'other',
+              totalAmount: userBalance
+            });
+          }}
+        >
+          <View style={[styles.groupIconNew, { backgroundColor: getIconBgColor() }]}>
+            <Text style={styles.groupEmoji}>{getGroupEmoji(item.type || 'other')}</Text>
+          </View>
+          
+          <View style={styles.groupInfo}>
+            <Text style={styles.groupNameNew} numberOfLines={1}>{item.name}</Text>
+            <Text style={styles.groupMembersNew}>
+              {item.members ? (typeof item.members === 'number' ? `${item.members} members` : `${item.members.length} members`) : '0 members'}
+            </Text>
+          </View>
+          
+          <View style={styles.amountWrapNew}>
+            <Text style={[styles.amountTextNew, { color: amountColor }]} numberOfLines={1}>
+              {formatCurrency(Math.abs(userBalance))}
+            </Text>
+            <Text style={[styles.amountLabelNew, { color: amountColor === '#BDBDBD' ? '#666' : amountColor }]}>
+              {userBalance > 0 ? 'gets back' : userBalance < 0 ? 'owes' : 'settled up'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+        {/* Add very subtle divider at the bottom of each item except the last one */}
+        <View style={[styles.subtleDivider, { backgroundColor: colorForLine + '15' }]} />
       </View>
-      
-      <View style={styles.groupInfo}>
-        <Text style={styles.groupName}>{item.name}</Text>
-        <Text style={styles.groupMembers}>
-          {item.members ? (typeof item.members === 'number' ? `${item.members} members` : `${item.members.length} members`) : '0 members'}
-        </Text>
-      </View>
-      
-      <View style={styles.amountWrap}>
-        <Text style={[styles.amountText, { color: amountColor }]}>
-          ₹{Math.abs(userBalance)}
-        </Text>
-        <Text style={styles.amountLabel}>
-          {userBalance > 0 ? 'You are owed' : userBalance < 0 ? 'You owe' : 'Settled up'}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
-};
+    );
+  };
 
-const renderFilterModal = () => (
-  <Modal visible={filterVisible} transparent animationType="fade">
-    <TouchableOpacity 
-      style={styles.modalOverlay} 
-      onPress={() => setFilterVisible(false)}
-    >
-      <View style={styles.filterModal}>
-        <TouchableOpacity 
-          style={styles.filterOption}
-          onPress={() => applyFilter(null)}
-        >
-          <Text style={styles.filterOptionText}>All Groups</Text>
-          {filter === null && <Icon name="checkmark" size={18} color="#0A6EFF" />}
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.filterOption}
-          onPress={() => applyFilter('owed')}
-        >
-          <Text style={styles.filterOptionText}>Groups that owe me</Text>
-          {filter === 'owed' && <Icon name="checkmark" size={18} color="#0A6EFF" />}
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.filterOption}
-          onPress={() => applyFilter('owing')}
-        >
-          <Text style={styles.filterOptionText}>Groups I owe</Text>
-          {filter === 'owing' && <Icon name="checkmark" size={18} color="#0A6EFF" />}
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.filterOption}
-          onPress={() => applyFilter('settled')}
-        >
-          <Text style={styles.filterOptionText}>Settled groups</Text>
-          {filter === 'settled' && <Icon name="checkmark" size={18} color="#0A6EFF" />}
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.cancelFilterButton}
-          onPress={() => setFilterVisible(false)}
-        >
-          <Text style={styles.cancelFilterText}>Cancel</Text>
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
-  </Modal>
-);
+  const renderFilterModal = () => (
+    <Modal visible={filterVisible} transparent animationType="fade">
+      <TouchableOpacity 
+        style={styles.modalOverlay} 
+        onPress={() => setFilterVisible(false)}
+      >
+        <View style={styles.filterModal}>
+          <TouchableOpacity 
+            style={styles.filterOption}
+            onPress={() => applyFilter(null)}
+          >
+            <Text style={styles.filterOptionText}>All Groups</Text>
+            {filter === null && <Icon name="checkmark" size={18} color="#9061F9" />}
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.filterOption}
+            onPress={() => applyFilter('owed')}
+          >
+            <Text style={styles.filterOptionText}>Groups that owe me</Text>
+            {filter === 'owed' && <Icon name="checkmark" size={18} color="#9061F9" />}
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.filterOption}
+            onPress={() => applyFilter('owing')}
+          >
+            <Text style={styles.filterOptionText}>Groups I owe</Text>
+            {filter === 'owing' && <Icon name="checkmark" size={18} color="#9061F9" />}
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.filterOption}
+            onPress={() => applyFilter('settled')}
+          >
+            <Text style={styles.filterOptionText}>Settled groups</Text>
+            {filter === 'settled' && <Icon name="checkmark" size={18} color="#9061F9" />}
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.cancelFilterButton}
+            onPress={() => setFilterVisible(false)}
+          >
+            <Text style={styles.cancelFilterText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
 
   // Show loading indicator while auth data is loading
   if (authLoading) {
     return (
       <SafeAreaView style={{flex: 1, backgroundColor: '#fff'}}>
         <View style={[styles.screenContainer, styles.centerContainer]}>
-          <ActivityIndicator size="large" color="#0A6EFF" />
+          <ActivityIndicator size="large" color="#9061F9" />
           <Text style={styles.loadingText}>Loading user data...</Text>
         </View>
       </SafeAreaView>
@@ -266,40 +291,46 @@ const renderFilterModal = () => (
 
   return (
     <SafeAreaView style={{flex: 1, backgroundColor: '#fff'}}>
-      <View style={styles.screenContainer}>
-        <View style={styles.topBar}>
-          <Text style={styles.topBarTitle}>Groups</Text>
-          <TouchableOpacity onPress={() => setFilterVisible(true)} style={styles.filterButton}>
-          <Icon name="filter" size={24} color="#fff" />
+      {/* Header section with white background */}
+      <View style={styles.headerSection}>
+        <View style={styles.headerTopRow}>
+          <Text style={styles.headerTitle}>Groups</Text>
+          <TouchableOpacity onPress={() => setFilterVisible(true)} style={styles.menuButton}>
+            <Icon name="menu" size={18} color="#666" />
           </TouchableOpacity>
         </View>
-
-        <View style={styles.headerActions}>
-        <Text style={styles.totalAmount}>
-          Overall in groups: ₹{totalOwed}
-        </Text>
-        <View style={styles.buttonsRow}>
+        
+        <View style={styles.totalAmountSection}>
+          <Text style={styles.totalAmountLabel}>Overall in groups:</Text>
+          <Text style={styles.totalAmountValue}>{formatCurrency(totalOwed)}</Text>
+        </View>
+        
+        <View style={styles.headerButtonsRow}>
           <TouchableOpacity 
-            style={styles.actionButton}
+            style={styles.createButton}
             onPress={() => navigation.navigate('CreateGroupScreen')}
           >
-            <Icon name="add-circle" size={18} color="#0A6EFF" />
-            <Text style={styles.actionButtonText}>Create</Text>
+            <Icon name="add" size={14} color="#fff" />
+            <Text style={styles.createButtonText}>Create</Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
-            style={styles.actionButton}
+            style={styles.joinButton}
             onPress={handleJoinGroup}
           >
-            <Icon name="log-in" size={18} color="#0A6EFF" />
-            <Text style={styles.actionButtonText}>Join</Text>
+            <Icon name="log-in" size={14} color="#9061F9" />
+            <Text style={styles.joinButtonText}>Join</Text>
           </TouchableOpacity>
         </View>
       </View>
 
+      {/* Groups list section with white background instead of gray */}
+      <View style={styles.groupsListSection}>
+        <Text style={styles.groupsListTitle}>Your Groups</Text>
+
         {loading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#0A6EFF" />
+            <ActivityIndicator size="large" color="#9061F9" />
             <Text style={styles.loadingText}>Loading groups...</Text>
           </View>
         ) : error ? (
@@ -318,274 +349,326 @@ const renderFilterModal = () => (
             <Text style={styles.emptyStateSubtitle}>Create a group to split expenses with multiple people</Text>
             <View style={styles.emptyStateButtons}>
               <TouchableOpacity 
-                style={styles.emptyStateButton}
+                style={styles.emptyStateCreateButton}
                 onPress={() => navigation.navigate('CreateGroupScreen')}
               >
                 <Text style={styles.emptyStateButtonText}>Create a group</Text>
               </TouchableOpacity>
               
               <TouchableOpacity 
-                style={[styles.emptyStateButton, styles.outlineButton]}
+                style={styles.emptyStateJoinButton}
                 onPress={handleJoinGroup}
               >
-                <Text style={styles.outlineButtonText}>Join a group</Text>
+                <Text style={styles.emptyStateJoinButtonText}>Join a group</Text>
               </TouchableOpacity>
             </View>
           </View>
         ) : (
           <FlatList
-          data={getFilteredGroups()}
-          keyExtractor={(item) => item.id}
-          renderItem={renderGroup}
-          contentContainerStyle={{ paddingBottom: 20 }}
-          refreshing={loading}
-          onRefresh={fetchGroups}
-          showsVerticalScrollIndicator={false}
+            data={getFilteredGroups()}
+            keyExtractor={(item) => item.id}
+            renderItem={renderGroup}
+            contentContainerStyle={{ paddingBottom: 20 }}
+            refreshing={loading}
+            onRefresh={fetchGroups}
+            showsVerticalScrollIndicator={false}
           />
         )}
       </View>
+      
+      {renderFilterModal()}
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  // Keep existing utility styles
   screenContainer: {
     flex: 1,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 20 : 10,
-    paddingHorizontal: 20,
     backgroundColor: '#fff',
-    paddingBottom: 80 // Add space for tab bar
   },
   centerContainer: {
     justifyContent: 'center',
     alignItems: 'center',
   },
-  topBar: {
+  
+  // Updated header section styles with much smaller sizes
+  headerSection: {
+    backgroundColor: '#fff',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 16 : 8,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  headerTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#0A6EFF',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 20
-  },
-  topBarTitle: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold'
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-    paddingVertical: 10
+    marginTop: 8,
+    marginBottom: 10,
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#333'
-  },
-  filterButton: {
-    padding: 8
-  },
-  headerActions: {
-    marginBottom: 20,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center'
-  },
-  totalAmount: {
-    fontSize: 16, // Reduced from 18
+    fontSize: 22,
     fontWeight: '600',
-    color: '#0A2A66',
-    flex: 1 // Add flex to allow proper space allocation
+    color: '#333',
   },
-  buttonsRow: {
+  menuButton: {
+    padding: 6,
+  },
+  totalAmountSection: {
+    marginBottom: 12,
+  },
+  totalAmountLabel: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '400',
+  },
+  totalAmountValue: {
+    fontSize: 24,
+    fontWeight: '500',
+    color: '#9061F9',
+    marginTop: -2,
+  },
+  headerButtonsRow: {
     flexDirection: 'row',
-    gap: 8,
-    flexShrink: 0 // Prevent buttons from shrinking
+    gap: 10,
+    marginBottom: 6,
   },
-  actionButton: {
+  createButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E6F0FF',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    gap: 4
+    justifyContent: 'center',
+    backgroundColor: '#9061F9',
+    paddingVertical: 10,
+    borderRadius: 6,
+    gap: 6,
   },
-  actionButtonText: {
-    color: '#0A6EFF',
-    fontWeight: 'bold'
+  createButtonText: {
+    color: '#fff',
+    fontWeight: '500',
+    fontSize: 13,
   },
-  groupCard: {
+  joinButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+    paddingVertical: 10,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(144, 97, 249, 0.3)',
+    gap: 6,
+  },
+  joinButtonText: {
+    color: '#9061F9',
+    fontWeight: '500',
+    fontSize: 13,
+  },
+  
+  // Updated groups list section styles - white background
+  groupsListSection: {
+    flex: 1,
+    backgroundColor: '#fff', // Changed from gray to white
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 80, // Add space for tab bar
+  },
+  groupsListTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+    marginLeft: 2,
+  },
+  
+  // New group item styles without card blocks
+  groupItemNew: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
     paddingHorizontal: 12,
     backgroundColor: '#fff',
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#f0f0f0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2
   },
-  groupIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 12,
+  // New subtle divider style
+  subtleDivider: {
+    height: 1,
+    width: '100%',
+    backgroundColor: 'rgba(0,0,0,0.05)', // Very light, almost invisible
+  },
+  groupIconNew: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16
+    marginRight: 10,
   },
-  groupInitial: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 20
+  groupEmoji: {
+    fontSize: 16,
   },
   groupInfo: {
-    flex: 1
+    flex: 1,
   },
-  groupName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333'
-  },
-  groupMembers: {
+  groupNameNew: {
     fontSize: 13,
+    fontWeight: '500',
+    color: '#333',
+  },
+  groupMembersNew: {
+    fontSize: 11,
     color: '#666',
-    marginTop: 4
+    marginTop: 1,
   },
-  amountWrap: {
-    alignItems: 'flex-end'
+  amountWrapNew: {
+    alignItems: 'flex-end',
+    maxWidth: '45%', // Limit width to prevent overflow
   },
-  amountText: {
-    fontSize: 16,
-    fontWeight: '600'
+  amountTextNew: {
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'right',
   },
-  amountLabel: {
-    fontSize: 12,
-    color: '#666'
+  amountLabelNew: {
+    fontSize: 10,
+    color: '#666',
+    marginTop: 1,
+    textAlign: 'right',
   },
+  
+  // Reduced sizes for other styles
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
+    paddingTop: 40,
   },
   loadingText: {
-    marginTop: 10,
-    color: '#666'
+    marginTop: 8,
+    color: '#666',
+    fontSize: 12,
   },
+  
+  // Empty state styles with reduced sizes
   emptyStateContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20
+    paddingHorizontal: 20,
+    paddingBottom: 80,
+    paddingTop: 30,
   },
   emptyStateTitle: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 8
+    marginTop: 12,
+    marginBottom: 6,
   },
   emptyStateSubtitle: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#666',
     textAlign: 'center',
-    marginBottom: 24
+    marginBottom: 24,
   },
   emptyStateButtons: {
     width: '100%',
-    gap: 12
+    gap: 10,
   },
-  emptyStateButton: {
-    backgroundColor: '#0A6EFF',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    alignItems: 'center'
+  emptyStateCreateButton: {
+    backgroundColor: '#9061F9',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 6,
+    alignItems: 'center',
   },
   emptyStateButtonText: {
     color: '#fff',
     fontWeight: 'bold',
-    fontSize: 16
+    fontSize: 13,
   },
-  outlineButton: {
+  emptyStateJoinButton: {
     backgroundColor: 'transparent',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 6,
+    alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#0A6EFF'
+    borderColor: 'rgba(144, 97, 249, 0.3)',
   },
-  outlineButtonText: {
-    color: '#0A6EFF',
+  emptyStateJoinButtonText: {
+    color: '#9061F9',
     fontWeight: 'bold',
-    fontSize: 16
+    fontSize: 13,
   },
+  
+  // Error state styles with reduced sizes
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20
+    paddingHorizontal: 16,
   },
   errorTitle: {
-    marginTop: 10,
-    fontSize: 18,
+    marginTop: 8,
+    fontSize: 14,
     fontWeight: 'bold',
-    color: '#F44336'
+    color: '#F44336',
   },
   errorMessage: {
-    marginTop: 5,
-    fontSize: 16,
+    marginTop: 4,
+    fontSize: 12,
     color: '#666',
-    textAlign: 'center'
+    textAlign: 'center',
   },
   retryButton: {
-    marginTop: 20,
-    backgroundColor: '#0A6EFF',
+    marginTop: 16,
+    backgroundColor: '#9061F9',
     paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8
+    paddingHorizontal: 16,
+    borderRadius: 6,
   },
   retryText: {
     color: '#fff',
-    fontWeight: 'bold'
+    fontWeight: 'bold',
+    fontSize: 12,
   },
+  
+  // Filter modal styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
-    padding: 20
+    padding: 16,
   },
   filterModal: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16
+    borderRadius: 10,
+    padding: 12,
   },
   filterOption: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0'
+    borderBottomColor: '#f0f0f0',
   },
   filterOptionText: {
-    fontSize: 16,
-    color: '#333'
+    fontSize: 13,
+    color: '#333',
   },
   cancelFilterButton: {
-    paddingVertical: 12,
-    marginTop: 8,
-    alignItems: 'center'
+    paddingVertical: 10,
+    marginTop: 6,
+    alignItems: 'center',
   },
   cancelFilterText: {
-    color: '#0A6EFF',
+    color: '#9061F9',
     fontWeight: '600',
-    fontSize: 16
+    fontSize: 13,
   }
 });
 

@@ -23,6 +23,7 @@ import { RouteProp, useNavigation, useRoute, CommonActions } from '@react-naviga
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, TabParamList } from '../types';
 import { useAuth } from '../components/AuthContext';
+import { formatCurrency } from '../utils/formatCurrency';
 import { 
   collection, 
   addDoc, 
@@ -42,6 +43,7 @@ import * as Crypto from 'expo-crypto';
 import DateTimePicker from '@react-native-community/datetimepicker'; // Import DateTimePicker
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system';
+import ActivityService from '../services/ActivityService';
 
 type AddExpenseScreenRouteProp = RouteProp<TabParamList, 'AddExpenseScreen'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -1092,8 +1094,20 @@ const saveExpense = async () => {
     if (currentGroupId) {
       // Handle group expense
       console.log(`Saving as group expense to group: ${currentGroupId}`);
-      await saveGroupExpense({...expenseData, groupId: currentGroupId});
+      // Save the group expense and capture the reference
+      const expenseRef = await saveGroupExpense({...expenseData, groupId: currentGroupId});
       
+      // Log the activity
+      ActivityService.logExpenseAdded(
+        user.uid,
+        user.displayName || 'You',
+        currentGroupId, 
+        groupName,
+        expenseRef?.id || null, // Now we can properly use the expense IDe doesn't return it
+        description,
+        parseFloat(amount)
+      );
+    
       // Navigate back to group dashboard with refresh flag
       navigation.navigate('GroupDashboardScreen', {
         groupId: currentGroupId,
@@ -1103,8 +1117,19 @@ const saveExpense = async () => {
     } else if (currentFriendId) {
       // Handle friend expense
         console.log(`Saving as friend expense with friend: ${currentFriendId}`);
-        await saveFriendExpense({...expenseData, friendId: currentFriendId});
-        
+        const expenseRef = await saveFriendExpense({...expenseData, friendId: currentFriendId});
+        if (expenseRef) 
+          {
+          ActivityService.logExpenseAdded(
+          user.uid,
+          user.displayName || 'You',
+          currentFriendId, 
+          expenseData.friendName,
+          expenseRef.id,
+          description,
+          parseFloat(amount)
+        );
+      }
         // Navigate back to friend dashboard with refresh flag - fix type issue
         navigation.navigate('FriendsDashboardScreen', {
           friendId: currentFriendId,
@@ -1132,12 +1157,22 @@ const saveExpense = async () => {
         
         if (targetFriend) {
           console.log(`Creating friend expense with: ${targetFriend.name} (${targetFriendId})`);
-          await saveFriendExpense({
+          const expenseRef = await saveFriendExpense({
             ...expenseData, 
             friendId: targetFriendId,
             friendName: targetFriend.name
           });
-          
+          if (expenseRef) {
+          ActivityService.logExpenseAdded(
+            user.uid,
+            user.displayName || 'You',
+            targetFriendId, 
+            targetFriend.name,
+            expenseRef.id,
+            description,
+            parseFloat(amount)
+          );
+        }
           // Navigate to friend dashboard - fix type issue
           navigation.navigate('FriendsDashboardScreen', {
             friendId: targetFriendId,
@@ -1264,7 +1299,7 @@ const validateExpense = () => {
             updatedMembers[memberIndex].balance = currentBalance - split.amount;
           }
         });
-        
+          
         // Update the payer's balance
         const payerIndex = updatedMembers.findIndex(
           (m: any) => m.uid === paidBy?.uid
@@ -1282,7 +1317,7 @@ const validateExpense = () => {
           const currentBalance = updatedMembers[payerIndex].balance || 0;
           updatedMembers[payerIndex].balance = currentBalance + othersOwe;
         }
-        
+          
         // 4. Update the group document with new member balances
         transaction.update(groupRef, {
           members: updatedMembers,
@@ -1303,7 +1338,7 @@ const validateExpense = () => {
     }
   };
   
-  const saveFriendExpense = async (expenseData: any) => {
+const saveFriendExpense = async (expenseData: any) => {
     if (!friendId || !user) return;
     
     try {
@@ -1366,7 +1401,7 @@ const validateExpense = () => {
       navigation.navigate('FriendsDashboardScreen', {
         friendId,
         friendName,
-        refresh: true,
+        refresh: true, 
         totalOwed: 0, // This will be recalculated on the dashboard
         groups: [] // This will be reloaded on the dashboard
       });
@@ -1948,7 +1983,7 @@ const validateExpense = () => {
           
           <View style={styles.splitTotalContainer}>
             <Text style={styles.splitTotalLabel}>Total Amount</Text>
-            <Text style={styles.splitTotalAmount}>${amount || '0.00'}</Text>
+            <Text style={styles.splitTotalAmount}>${formatCurrency(parseFloat(amount) || 0)}</Text>
           </View>
           
           <FlatList

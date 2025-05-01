@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View, Text } from 'react-native';
+import { View } from 'react-native';
 import FriendsScreen from './FriendsScreen';
 import GroupsScreen from './GroupsScreen';
 import ActivityScreen from './ActivityScreen';
@@ -18,7 +18,7 @@ interface MainDashboardProps {
 export default function MainDashboardScreen({ route }: MainDashboardProps) {
   // Get initial screen from params
   const initialParams = route?.params || {};
-  const initialScreen = initialParams.screen || 'Friends';
+  const initialScreen = initialParams.screen || 'Groups'; // Changed default to Groups
   
   // Map any screen name discrepancies
   const getValidTabName = (screenName: string) => {
@@ -42,43 +42,64 @@ export default function MainDashboardScreen({ route }: MainDashboardProps) {
       screenOptions={({ route }) => ({
         tabBarIcon: ({ focused, color, size }) => {
           let iconName;
-          if (route.name === 'Friends') iconName = focused ? 'people' : 'people-outline';
-          else if (route.name === 'Groups') iconName = focused ? 'people-circle' : 'people-circle-outline';
-          else if (route.name === 'Activity') iconName = focused ? 'bar-chart' : 'bar-chart-outline';
-          else if (route.name === 'Account') iconName = focused ? 'person' : 'person-outline';
+          if (route.name === 'Groups') iconName = focused ? 'people' : 'people-outline';
+          else if (route.name === 'Friends') iconName = focused ? 'person' : 'person-outline';
+          else if (route.name === 'Activity') iconName = focused ? 'time' : 'time-outline';
+          else if (route.name === 'Account') iconName = focused ? 'person-circle' : 'person-circle-outline';
 
-          return <Ionicons name={iconName as any} size={size} color={color} />;
+          // Create a custom tab icon with background when active
+          return (
+            <View style={{
+              width: focused ? 40 : 32, // Slightly larger for better visibility
+              height: focused ? 40 : 32, // Slightly larger for better visibility
+              borderRadius: 20,
+              backgroundColor: focused ? 'rgba(144, 97, 249, 0.15)' : 'transparent', // Slightly darker background
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}>
+              <Ionicons name={iconName as any} size={22} color={color} />
+            </View>
+          );
         },
-        tabBarActiveTintColor: '#fff',
-        tabBarInactiveTintColor: '#90CAF9',
+        tabBarActiveTintColor: '#9061F9', // Purple for active tab
+        tabBarInactiveTintColor: '#666',  // Darker gray for inactive tab (was #888)
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: '#0A6EFF',
-          height: 60,
-          paddingBottom: 5
+          backgroundColor: '#fff',
+          height: Platform.OS === 'ios' ? 85 : 65,
+          paddingBottom: Platform.OS === 'ios' ? 25 : 10,
+          paddingTop: 10,
+          borderTopWidth: 1,
+          borderTopColor: '#ddd', // Darker border for better visibility
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.08, // Increased shadow opacity
+          shadowRadius: 4, // Increased shadow radius
+          elevation: 8, // Increased elevation for Android
         },
         tabBarLabelStyle: {
-          fontSize: 12
+          fontSize: 12, // Slightly larger font
+          fontWeight: '600', // Bolder text
+          marginTop: 4,
         },
         tabBarItemStyle: {
-          paddingTop: 5
+          paddingVertical: 6,
         },
-        tabBarActiveBackgroundColor: 'rgba(255,255,255,0.1)',
       })}
     >
-      <Tab.Screen 
-        name="Friends" 
-        component={FriendsScreen}
-        options={{
-          tabBarLabel: 'Friends',
-        }}
-        initialParams={{ insideTabNavigator: true }}
-      />
       <Tab.Screen 
         name="Groups" 
         component={GroupsScreen}
         options={{
           tabBarLabel: 'Groups',
+        }}
+        initialParams={{ insideTabNavigator: true }}
+      />
+      <Tab.Screen 
+        name="Friends" 
+        component={FriendsScreen}
+        options={{
+          tabBarLabel: 'Friends',
         }}
         initialParams={{ insideTabNavigator: true }}
       />

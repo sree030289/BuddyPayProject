@@ -7,6 +7,7 @@ import { RootStackParamList } from '../types';
 import SharedTabBar from '../components/SharedTabBar';
 import { useAuth } from '../components/AuthContext'; // Import useAuth hook
 import { db } from '../services/firebaseConfig';
+import { formatCurrency } from '../utils/formatCurrency';
 import { 
   collection, 
   doc, 
@@ -353,9 +354,9 @@ const getOweText = () => {
   if (totalOwed === 0) {
     return 'All settled up';
   } else if (totalOwed > 0) {
-    return `${friendName} owes you ₹${totalOwed}`;
+    return `${friendName} owes you ${formatCurrency(totalOwed)}`;
   } else {
-    return `You owe ${friendName} ₹${Math.abs(totalOwed)}`;
+    return `You owe ${friendName} ${formatCurrency(Math.abs(totalOwed))}`;
   }
 };
 
@@ -402,7 +403,7 @@ const getOweText = () => {
       // For direct expenses, show details in an alert
       if (directExpenses.length > 0) {
         const expenseSummary = directExpenses.slice(0, 5).map(exp => 
-          `${formatFirestoreDate(exp.date)}: ${exp.description} - ₹${exp.amount}`
+          `${formatFirestoreDate(exp.date)}: ${exp.description} - ${formatCurrency(exp.amount)}`
         ).join('\n');
         
         const moreText = directExpenses.length > 5 ? `\n...and ${directExpenses.length - 5} more` : '';
@@ -539,7 +540,7 @@ const getOweText = () => {
                 <Text style={styles.borrowedText}>
                   {totalOwed >= 0 ? `${friendName} owes` : 'you owe'}
                 </Text>
-                <Text style={styles.amountText}>₹{item.amount}</Text>
+                <Text style={styles.amountText}>{formatCurrency(item.amount)}</Text>
               </View>
             </TouchableOpacity>
           )}

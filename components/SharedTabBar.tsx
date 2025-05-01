@@ -1,148 +1,191 @@
-// Updated SharedTabBar.tsx with consistent positioning
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform, Dimensions } from 'react-native';
-import { Ionicons as Icon } from '@expo/vector-icons';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../types';
+import { useAuth } from './AuthContext';
+import ActivityService from '../services/ActivityService';
+
+type TabBarNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 interface SharedTabBarProps {
-  activeTab: string;
+  activeTab: 'Home' | 'Groups' | 'Friends' | 'Activity' | 'Profile';
 }
 
 const SharedTabBar: React.FC<SharedTabBarProps> = ({ activeTab }) => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<TabBarNavigationProp>();
+  const { user } = useAuth();
+  const [unreadActivities, setUnreadActivities] = useState(0);
 
-  const navigateTo = (routeName: string) => {
-    // Handle navigation to the selected tab
-    navigation.navigate('MainDashboard', { screen: routeName });
+  // Fetch unread activity count
+  useEffect(() => {
+    if (user) {
+      fetchUnreadCount();
+    }
+  }, [user, activeTab]);
+
+  const fetchUnreadCount = async () => {
+    if (!user) return;
+
+    try {
+      const count = await ActivityService.getUnreadCount(user.uid);
+      setUnreadActivities(count);
+    } catch (error) {
+      console.error('Error fetching unread activity count:', error);
+    }
+  };
+
+  const handleTabPress = (tab: string) => {
+    // If already on the tab, don't navigate again
+    if (tab === activeTab) return;
+
+    switch (tab) {
+      case 'Home':
+        navigation.navigate('MainDashboard', { screen: 'Home' });
+        break;
+      case 'Groups':
+        navigation.navigate('MainDashboard', { screen: 'Groups' });
+        break;
+      case 'Friends':
+        navigation.navigate('MainDashboard', { screen: 'Friends' });
+        break;
+      case 'Activity':
+        navigation.navigate('MainDashboard', { screen: 'Activity' });
+        break;
+      case 'Account':
+        navigation.navigate('MainDashboard', { screen: 'Account' });
+        break;
+    }
   };
 
   return (
-    <View style={styles.container}>
+    <View style={styles.tabBar}>
       <TouchableOpacity
-        style={[styles.tabItem, activeTab === 'Friends' && styles.activeTabItem]}
-        onPress={() => navigateTo('Friends')}
+        style={styles.tabItem}
+        onPress={() => handleTabPress('Home')}
       >
-        <Icon
-          name={activeTab === 'Friends' ? 'people' : 'people-outline'}
+        <Ionicons
+          name={activeTab === 'Home' ? 'home' : 'home-outline'}
           size={24}
-          color={activeTab === 'Friends' ? '#0A6EFF' : '#666'}
+          color={activeTab === 'Home' ? '#0A6EFF' : '#757575'}
         />
-        <Text style={[styles.tabText, activeTab === 'Friends' && styles.activeTabText]}>
+        <Text style={[styles.tabLabel, activeTab === 'Home' && styles.activeTabLabel]}>
+          Home
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.tabItem}
+        onPress={() => handleTabPress('Groups')}
+      >
+        <Ionicons
+          name={activeTab === 'Groups' ? 'people' : 'people-outline'}
+          size={24}
+          color={activeTab === 'Groups' ? '#0A6EFF' : '#757575'}
+        />
+        <Text style={[styles.tabLabel, activeTab === 'Groups' && styles.activeTabLabel]}>
+          Groups
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.tabItem}
+        onPress={() => handleTabPress('Friends')}
+      >
+        <Ionicons
+          name={activeTab === 'Friends' ? 'person' : 'person-outline'}
+          size={24}
+          color={activeTab === 'Friends' ? '#0A6EFF' : '#757575'}
+        />
+        <Text style={[styles.tabLabel, activeTab === 'Friends' && styles.activeTabLabel]}>
           Friends
         </Text>
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={[styles.tabItem, activeTab === 'Groups' && styles.activeTabItem]}
-        onPress={() => navigateTo('Groups')}
+        style={styles.tabItem}
+        onPress={() => handleTabPress('Activity')}
       >
-        <Icon
-          name={activeTab === 'Groups' ? 'people-circle' : 'people-circle-outline'}
-          size={24}
-          color={activeTab === 'Groups' ? '#0A6EFF' : '#666'}
-        />
-        <Text style={[styles.tabText, activeTab === 'Groups' && styles.activeTabText]}>
-          Groups
-        </Text>
-      </TouchableOpacity>
-
-      {/* <View style={styles.centerButtonContainer}>
-  <TouchableOpacity 
-    style={styles.centerButton}
-    onPress={() => navigation.navigate('AddExpenseScreen')}
-  >
-    <Icon name="add" size={24} color="#fff" />
-  </TouchableOpacity>
-</View> */}
-      <TouchableOpacity
-        style={[styles.tabItem, activeTab === 'Activity' && styles.activeTabItem]}
-        onPress={() => navigateTo('Activity')}
-      >
-        <Icon
-          name={activeTab === 'Activity' ? 'bar-chart' : 'bar-chart-outline'}
-          size={24}
-          color={activeTab === 'Activity' ? '#0A6EFF' : '#666'}
-        />
-        <Text style={[styles.tabText, activeTab === 'Activity' && styles.activeTabText]}>
+        <View>
+          <Ionicons
+            name={activeTab === 'Activity' ? 'time' : 'time-outline'}
+            size={24}
+            color={activeTab === 'Activity' ? '#0A6EFF' : '#757575'}
+          />
+          {unreadActivities > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>
+                {unreadActivities > 9 ? '9+' : unreadActivities}
+              </Text>
+            </View>
+          )}
+        </View>
+        <Text style={[styles.tabLabel, activeTab === 'Activity' && styles.activeTabLabel]}>
           Activity
         </Text>
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={[styles.tabItem, activeTab === 'Account' && styles.activeTabItem]}
-        onPress={() => navigateTo('Account')}
+        style={styles.tabItem}
+        onPress={() => handleTabPress('Profile')}
       >
-        <Icon
-          name={activeTab === 'Account' ? 'person' : 'person-outline'}
+        <Ionicons
+          name={activeTab === 'Profile' ? 'settings' : 'settings-outline'}
           size={24}
-          color={activeTab === 'Account' ? '#0A6EFF' : '#666'}
+          color={activeTab === 'Profile' ? '#0A6EFF' : '#757575'}
         />
-        <Text style={[styles.tabText, activeTab === 'Account' && styles.activeTabText]}>
-          Account
+        <Text style={[styles.tabLabel, activeTab === 'Profile' && styles.activeTabLabel]}>
+          Profile
         </Text>
       </TouchableOpacity>
     </View>
   );
 };
 
-// Get the window dimensions for positioning
-const { width, height } = Dimensions.get('window');
-
 const styles = StyleSheet.create({
-  container: {
+  tabBar: {
     flexDirection: 'row',
     backgroundColor: '#fff',
     borderTopWidth: 1,
     borderTopColor: '#eee',
-    paddingBottom: Platform.OS === 'ios' ? 24 : 12, // Extra padding for iOS devices with home indicator
-    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 0,
+    paddingTop: 10,
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    width: '100%',
-    zIndex: 1000, // Ensure tab bar appears above other content
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 5, // Android shadow
+    height: Platform.OS === 'ios' ? 80 : 60
   },
   tabItem: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center'
   },
-  activeTabItem: {
-    // You could add additional styling for active tab
-  },
-  tabText: {
+  tabLabel: {
     fontSize: 12,
-    color: '#666',
-    marginTop: 4,
+    color: '#757575',
+    marginTop: 4
   },
-  activeTabText: {
+  activeTabLabel: {
     color: '#0A6EFF',
-    fontWeight: 'bold',
+    fontWeight: '500'
   },
-  centerButtonContainer: {
+  badge: {
     position: 'absolute',
-    alignItems: 'center',
-    top: -30, // Adjust as needed to position above the tab bar
-    width: '100%'
-  },
-  centerButton: {
-    backgroundColor: '#0A6EFF',
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    top: -5,
+    right: -8,
+    backgroundColor: '#FF3B30',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 5
+    paddingHorizontal: 4
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold'
   }
 });
 

@@ -21,6 +21,7 @@ import { RootStackParamList } from '../types';
 import { useAuth } from '../components/AuthContext';
 import { db } from '../services/firebaseConfig';
 import { collection, doc, getDoc, updateDoc, arrayUnion, setDoc, addDoc } from 'firebase/firestore';
+import ActivityService from '../services/ActivityService';
 
 type VerifyContactsRouteProp = RouteProp<RootStackParamList, 'VerifyContactsScreen'>;
 type Navigation = NativeStackNavigationProp<RootStackParamList>;
@@ -191,6 +192,7 @@ const VerifyContactsScreen = () => {
             // Small delay between operations
             await new Promise(resolve => setTimeout(resolve, 300));
           }
+
         } else {
           // If members array doesn't exist, create it with all new members
           await updateDoc(groupRef, {
@@ -226,7 +228,16 @@ const VerifyContactsScreen = () => {
         setAddedCount(formattedMembers.length);
         setLoading(false);
         setShowSuccess(true);
-        
+        for (const member of formattedMembers) {
+        ActivityService.logMemberAdded(
+          user.uid,
+          user.displayName || 'You',
+          groupId,
+          groupName,
+          member.uid,
+          member.name
+        );
+      }
         // Success message
         setTimeout(() => {
           Alert.alert(

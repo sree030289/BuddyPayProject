@@ -21,6 +21,7 @@ import { db } from '../services/firebaseConfig';
 import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import SharedTabBar from '../components/SharedTabBar';
 import { useAuth } from '../components/AuthContext';
+import { formatCurrency } from '../utils/formatCurrency';
 
 // Define the proper types for the component props
 type GroupDashboardScreenProps = {
@@ -474,10 +475,10 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
                 styles.transactionAmount,
                 { color: isPaid ? '#4CAF50' : '#F44336' }
               ]}>
-                ₹{item.amount}
+                {formatCurrency(item.amount)}
               </Text>
               <Text style={styles.transactionShareText}>
-                {isPaid ? '' : 'Your share: ₹' + Math.round(item.amount / (item.splitWith?.length || 4))}
+                {isPaid ? '' : 'Your share: ' + formatCurrency(Math.round(item.amount / (item.splitWith?.length || 4)))}
               </Text>
             </View>
           </View>
@@ -540,7 +541,7 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
               ]}>
                 {balance === 0 ? 
                   'Settled' : 
-                  `₹${Math.abs(balance).toFixed(0)}`}
+                  formatCurrency(Math.abs(balance))}
               </Text>
               <Text style={styles.memberBalanceLabel}>
                 {balance > 0 ? 'gets back' : 
@@ -668,7 +669,9 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
                     styles.balanceSummaryAmount, 
                     { color: item.amount > 0 ? '#4CAF50' : '#F44336' }
                   ]}>
-                    {item.amount > 0 ? `gets back ₹${item.amount.toFixed(0)}` : `owes ₹${Math.abs(item.amount).toFixed(0)}`}
+                    {item.amount > 0 ? 
+                      `gets back ${formatCurrency(item.amount)}` : 
+                      `owes ${formatCurrency(Math.abs(item.amount))}`}
                   </Text>
                 </View>
               )}
@@ -756,7 +759,7 @@ const GroupDashboardScreen = ({ navigation, route }: GroupDashboardScreenProps):
             styles.balanceValue,
             { color: totalAmount > 0 ? '#4CAF50' : '#F44336' }
           ]}>
-            ₹{Math.abs(totalAmount)}
+            {formatCurrency(Math.abs(totalAmount))}
           </Text>
           {balanceSummaries.length > 1 && (
             <Icon name="information-circle-outline" size={20} color="#0A6EFF" />
