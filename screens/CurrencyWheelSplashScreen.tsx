@@ -5,17 +5,15 @@ import {
   Text,
   StyleSheet,
   Animated,
-  SafeAreaView,
   StatusBar,
   Dimensions,
-  Easing
+  Easing,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
 import { useAuth } from '../components/AuthContext';
 import * as SecureStore from 'expo-secure-store';
-import { Svg, Circle, Path, Line, Rect } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 
 type SplashScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Splash'>;
@@ -37,18 +35,14 @@ const CurrencyWheelSplashScreen = () => {
   const rotateAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   
-  // Loading animation
-  const dot1Anim = useRef(new Animated.Value(0.4)).current;
-  const dot2Anim = useRef(new Animated.Value(0.4)).current;
-  const dot3Anim = useRef(new Animated.Value(0.4)).current;
-  
   // Initialization status message
   const [statusMessage, setStatusMessage] = useState('Loading application...');
+  const loadingProgress = useRef(new Animated.Value(0)).current;
   
   // For currency wheel markers
   const getMarkerPosition = (index: number, total: number) => {
     const angle = (index * (360 / total)) * (Math.PI / 180);
-    const radius = width * 0.25; // Adjust based on screen size
+    const radius = width * 0.18; // Reduced radius to fit within the white circle
     const x = Math.sin(angle) * radius;
     const y = -Math.cos(angle) * radius;
     return { x, y };
@@ -96,47 +90,21 @@ const CurrencyWheelSplashScreen = () => {
       ])
     ).start();
     
-    // Start loading dots animation
+    // Start loading animation
     Animated.loop(
-      Animated.parallel([
-        Animated.sequence([
-          Animated.timing(dot1Anim, {
-            toValue: 1,
-            duration: 500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(dot1Anim, {
-            toValue: 0.4,
-            duration: 500,
-            useNativeDriver: true,
-          }),
-        ]),
-        Animated.sequence([
-          Animated.delay(500),
-          Animated.timing(dot2Anim, {
-            toValue: 1,
-            duration: 500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(dot2Anim, {
-            toValue: 0.4,
-            duration: 500,
-            useNativeDriver: true,
-          }),
-        ]),
-        Animated.sequence([
-          Animated.delay(1000),
-          Animated.timing(dot3Anim, {
-            toValue: 1,
-            duration: 500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(dot3Anim, {
-            toValue: 0.4,
-            duration: 500,
-            useNativeDriver: true,
-          }),
-        ]),
+      Animated.sequence([
+        Animated.timing(loadingProgress, {
+          toValue: 1,
+          duration: 1500,
+          easing: Easing.linear,
+          useNativeDriver: true, 
+        }),
+        Animated.timing(loadingProgress, {
+          toValue: 0,
+          duration: 1500,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
       ])
     ).start();
     
@@ -199,58 +167,12 @@ const CurrencyWheelSplashScreen = () => {
   });
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       <LinearGradient 
         colors={['#9061F9', '#6B46C1']} 
         style={styles.gradient}
-      >
-        {/* Decorative elements */}
-        <View style={[styles.decorativeElement, styles.decoration1]} />
-        <View style={[styles.decorativeElement, styles.decoration2]} />
-        <View style={[styles.decorativeElement, styles.decoration3]} />
-        <View style={[styles.decorativeElement, styles.decoration4]} />
-        
-        {/* Corner icons */}
-        <View style={[styles.iconContainer, styles.topLeft]}>
-          <Svg width="100%" height="100%" viewBox="0 0 100 100" style={styles.icon}>
-            <Circle cx="35" cy="35" r="15" stroke="rgba(255, 255, 255, 0.6)" strokeWidth="2" fill="none" />
-            <Circle cx="65" cy="35" r="15" stroke="rgba(255, 255, 255, 0.6)" strokeWidth="2" fill="none" />
-            <Path d="M15,50 C15,80 85,80 85,50 L85,80 L15,80 Z" stroke="rgba(255, 255, 255, 0.6)" strokeWidth="2" fill="none" />
-          </Svg>
-        </View>
-        
-        <View style={[styles.iconContainer, styles.topRight]}>
-          <Svg width="100%" height="100%" viewBox="0 0 100 100" style={styles.icon}>
-            <Rect x="15" y="15" width="70" height="70" rx="10" stroke="rgba(255, 255, 255, 0.6)" strokeWidth="2" fill="none" />
-            <Line x1="15" y1="35" x2="85" y2="35" stroke="rgba(255, 255, 255, 0.6)" strokeWidth="2" />
-            <Line x1="35" y1="15" x2="35" y2="35" stroke="rgba(255, 255, 255, 0.6)" strokeWidth="2" />
-            <Line x1="65" y1="15" x2="65" y2="35" stroke="rgba(255, 255, 255, 0.6)" strokeWidth="2" />
-            <Path d="M25,55 L45,75 L65,55 L75,65 L75,75 L25,75 Z" stroke="rgba(255, 255, 255, 0.6)" strokeWidth="2" fill="none" />
-            <Circle cx="60" cy="50" r="8" stroke="rgba(255, 255, 255, 0.6)" strokeWidth="2" fill="none" />
-          </Svg>
-        </View>
-        
-        <View style={[styles.iconContainer, styles.bottomLeft]}>
-          <Svg width="100%" height="100%" viewBox="0 0 100 100" style={styles.icon}>
-            <Path d="M20,20 L80,80 A60,60 0 0,0 20,20 Z" stroke="rgba(255, 255, 255, 0.6)" strokeWidth="2" fill="none" />
-            <Path d="M80,20 L20,80 A60,60 0 0,1 80,20 Z" stroke="rgba(255, 255, 255, 0.6)" strokeWidth="2" fill="none" />
-            <Circle cx="50" cy="35" r="5" stroke="rgba(255, 255, 255, 0.6)" strokeWidth="2" fill="none" />
-            <Circle cx="65" cy="50" r="5" stroke="rgba(255, 255, 255, 0.6)" strokeWidth="2" fill="none" />
-            <Circle cx="35" cy="50" r="5" stroke="rgba(255, 255, 255, 0.6)" strokeWidth="2" fill="none" />
-            <Circle cx="50" cy="65" r="5" stroke="rgba(255, 255, 255, 0.6)" strokeWidth="2" fill="none" />
-          </Svg>
-        </View>
-        
-        <View style={[styles.iconContainer, styles.bottomRight]}>
-          <Svg width="100%" height="100%" viewBox="0 0 100 100" style={styles.icon}>
-            <Path d="M15,50 Q15,40 25,40 L75,40 Q85,40 85,50 L85,60 L15,60 Z" stroke="rgba(255, 255, 255, 0.6)" strokeWidth="2" fill="none" />
-            <Rect x="25" y="25" width="50" height="25" rx="12" stroke="rgba(255, 255, 255, 0.6)" strokeWidth="2" fill="none" />
-            <Circle cx="30" cy="60" r="10" stroke="rgba(255, 255, 255, 0.6)" strokeWidth="2" fill="none" />
-            <Circle cx="70" cy="60" r="10" stroke="rgba(255, 255, 255, 0.6)" strokeWidth="2" fill="none" />
-          </Svg>
-        </View>
-        
+      >        
         {/* Currency Wheel */}
         <Animated.View
           style={[
@@ -304,94 +226,66 @@ const CurrencyWheelSplashScreen = () => {
           <Text style={styles.appTagline}>Split expenses with friends</Text>
         </Animated.View>
         
-        {/* Loading Dots and Status Message */}
+        {/* Loading Status */}
         <View style={styles.loadingContainer}>
-          <View style={styles.loadingDots}>
-            <Animated.View style={[styles.loadingDot, { opacity: dot1Anim }]} />
-            <Animated.View style={[styles.loadingDot, { opacity: dot2Anim }]} />
-            <Animated.View style={[styles.loadingDot, { opacity: dot3Anim }]} />
+          <View style={styles.dotsContainer}>
+            {[0, 1, 2].map(i => (
+              <Animated.View 
+                key={i}
+                style={[
+                  styles.loadingDot,
+                  {
+                    opacity: loadingProgress.interpolate({
+                      inputRange: [0, 0.5, 1],
+                      outputRange: [0.3, 1, 0.3],
+                      extrapolate: 'clamp'
+                    }),
+                    transform: [
+                      { 
+                        scale: loadingProgress.interpolate({
+                          inputRange: [0, 0.5, 1],
+                          outputRange: [0.7, 1, 0.7],
+                          extrapolate: 'clamp'
+                        }) 
+                      }
+                    ]
+                  }
+                ]}
+              />
+            ))}
           </View>
           <Text style={styles.statusMessage}>{statusMessage}</Text>
         </View>
       </LinearGradient>
-    </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
+    width: '100%',
+    height: '100%',
   },
   gradient: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  // Decorative elements
-  decorativeElement: {
-    position: 'absolute',
-    width: 10,
-    height: 10,
-    borderWidth: 5,
-    borderColor: 'rgba(255, 255, 255, 0.6)',
-    borderRadius: 10,
-  },
-  decoration1: {
-    top: '20%',
-    left: '10%',
-  },
-  decoration2: {
-    top: '15%',
-    right: '15%',
-  },
-  decoration3: {
-    bottom: '25%',
-    left: '12%',
-  },
-  decoration4: {
-    bottom: '20%',
-    right: '10%',
-  },
-  // Icon containers
-  iconContainer: {
-    position: 'absolute',
-    width: 80,
-    height: 80,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  icon: {
     width: '100%',
     height: '100%',
   },
-  topLeft: {
-    top: '15%',
-    left: '15%',
-  },
-  topRight: {
-    top: '15%',
-    right: '15%',
-  },
-  bottomLeft: {
-    bottom: '15%',
-    left: '15%',
-  },
-  bottomRight: {
-    bottom: '15%',
-    right: '15%',
-  },
   // Currency wheel
   logoContainer: {
-    width: width * 0.6,
-    height: width * 0.6,
+    width: width * 0.7,
+    height: width * 0.7,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 40,
   },
   wheelBackground: {
     position: 'absolute',
-    width: '75%',
-    height: '75%',
+    width: '85%',
+    height: '85%',
     borderRadius: 1000, // Large value to ensure it's a circle
     backgroundColor: 'white',
   },
@@ -404,9 +298,9 @@ const styles = StyleSheet.create({
   },
   currencyMarker: {
     position: 'absolute',
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: 'rgba(144, 97, 249, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -444,25 +338,24 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 40,
   },
-  // Loading container, dots and status message
+  // Loading container with progress bar
   loadingContainer: {
     position: 'absolute',
     bottom: '10%',
+    width: '80%',
     alignItems: 'center',
   },
-  loadingDots: {
+  dotsContainer: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 16,
+    justifyContent: 'space-between',
+    width: 60,
     marginBottom: 16,
   },
   loadingDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: 'white',
-    marginHorizontal: 8,
   },
   statusMessage: {
     color: 'rgba(255, 255, 255, 0.9)',
