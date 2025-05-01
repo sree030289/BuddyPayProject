@@ -140,30 +140,68 @@ const AddExpenseScreen = () => {
     { id: 'unequal', name: 'Split by amounts', description: 'Specify exact amounts for each person' },
     { id: 'shares', name: 'Split by shares', description: 'Use shares to determine split ratio' }
   ];
-  useEffect(() => {
-    console.log("Component mounted with params:", route.params);
+
+  // First, let's modify the main useEffect that runs on component mount
+useEffect(() => {
+  console.log("Component mounted with params:", route.params);
+  
+  // For group expense - ensure this runs first and only once
+  if (route.params?.groupId) {
+    const groupId = route.params.groupId;
+    console.log(`Initial load for group: ${groupId}`);
+    fetchGroupMembers(groupId);
+  } 
+  // For friend expense
+  else if (route.params?.friendId) {
+    const friendId = route.params.friendId;
+    console.log(`Initial load for friend: ${friendId}`);
+    setupFriendExpense(route.params.friendId, route.params.friendName);
+  }
+  // Only run the default friends fetch if we don't have a group or friend context
+  else if (user && user.uid) {
+    // Use our fetchDefaultFriends function when there's no group/friend context
+    fetchDefaultFriends();
+  }
+  
+  // Fetch available groups for dropdown - do this after group/friend setup
+  fetchAvailableGroups();
+}, [user?.uid]); // Only depend on user.uid to ensure this runs once when user is available
+  // Add this new useEffect right after the existing useEffect that depends on [user?.uid]
+// Place this around line 448 after the first useEffect
+
+// New effect to handle route param changes
+useEffect(() => {
+  console.log("Route params changed:", route.params);
+  
+  // Clear existing data when route params change
+  setMembers([]);
+  setSelectedMembers({});
+  setPaidBy(null);
+  
+  // Re-initialize based on new route params
+  if (route.params?.groupId) {
+    console.log(`Loading group members due to route param change: ${route.params.groupId}`);
     
-    // For group expense - ensure this runs first and only once
-    if (route.params?.groupId) {
-      const groupId = route.params.groupId;
-      console.log(`Initial load for group: ${groupId}`);
-      fetchGroupMembers(groupId);
-    } 
-    // For friend expense
-    else if (route.params?.friendId) {
-      const friendId = route.params.friendId;
-      console.log(`Initial load for friend: ${friendId}`);
-      setupFriendExpense(route.params.friendId, route.params.friendName);
-    }
-    // Only run the default friends fetch if we don't have a group or friend context
-    else if (user && user.uid) {
-      // Use our fetchDefaultFriends function when there's no group/friend context
-      fetchDefaultFriends();
-    }
+    // Update local variables to match route params
+    groupId = route.params.groupId;
+    groupName = route.params.groupName;
+    friendId = undefined;
+    friendName = undefined;
     
-    // Fetch available groups for dropdown - do this after group/friend setup
-    fetchAvailableGroups();
-  }, [user?.uid]); // Only depend on user.uid to ensure this runs once when user is available
+    fetchGroupMembers(route.params.groupId);
+  } 
+  else if (route.params?.friendId) {
+    console.log(`Loading friend due to route param change: ${route.params.friendId}`);
+    
+    // Update local variables
+    groupId = undefined;
+    groupName = undefined;
+    friendId = route.params.friendId;
+    friendName = route.params.friendName;
+    
+    setupFriendExpense(route.params.friendId, route.params.friendName);
+  }
+}, [route.params?.groupId, route.params?.friendId]);
 
   // Add this effect to force a re-render when the 'members' state changes
   useEffect(() => {
@@ -381,157 +419,164 @@ const AddExpenseScreen = () => {
     }
   };
   
-  // Modified fetchGroupMembers function to track group member IDs
-  const fetchGroupMembers = async (groupIdParam?: string) => {
-    // Use passed parameter or fallback to state variable
-    const targetGroupId = groupIdParam || groupId;
+// Modify the fetchGroupMembers function (around line 599)
+// Here's an improved version with better error handling and state management
+
+const fetchGroupMembers = async (groupIdParam?: string) => {
+  // Use passed parameter or fallback to state variable
+  const targetGroupId = groupIdParam || groupId;
+  
+  if (!targetGroupId || !user) {
+    console.log("Missing groupId or user, cannot fetch members");
+    setLoading(false);
+    return;
+  }
+  
+  console.log(`Fetching members for group: ${targetGroupId}`);
+  setLoading(true);
+  
+  try {
+    // Get the group document directly
+    const groupRef = doc(db, 'groups', targetGroupId);
+    const groupSnap = await getDoc(groupRef);
     
-    if (!targetGroupId || !user) {
-      console.log("Missing groupId or user, cannot fetch members");
-      return;
-    }
-    
-    console.log(`Fetching members for group: ${targetGroupId}`);
-    setLoading(true);
-    
-    try {
-      // Get the group document directly
-      const groupRef = doc(db, 'groups', targetGroupId);
-      const groupSnap = await getDoc(groupRef);
+    if (groupSnap.exists()) {
+      const groupData = groupSnap.data();
+      console.log(`Group data loaded: ${groupData.name}`);
       
-      if (groupSnap.exists()) {
-        const groupData = groupSnap.data();
-        console.log(`Group data loaded: ${groupData.name}`);
+      let membersList: GroupMember[] = [];
+      
+      // First try to get members from the members array
+      if (groupData.members && Array.isArray(groupData.members)) {
+        console.log('Using members array from group data');
         
-        let membersList: GroupMember[] = [];
-        
-        // First try to get members from the members array
-        if (groupData.members && Array.isArray(groupData.members)) {
-          console.log('Using members array from group data');
-          
-          membersList = groupData.members.map((member: any) => {
-            const isCurrentUser = member.uid === user.uid || member.id === user.uid;
-            return {
-              uid: member.uid || member.id,              
-              name: isCurrentUser ? 'You' : (member.name || 'Unknown'),
-              email: member.email,
-              phone: member.phone,
-              isAdmin: member.isAdmin,
-              balance: member.balance || 0,
-              isSelected: true            
-            };
-          });
-          
-          console.log(`Processed ${membersList.length} members from members array`);
-        } 
-        // If no members array, try using memberIds
-        else if (groupData.memberIds && Array.isArray(groupData.memberIds)) {
-          console.log('Using memberIds array from group data');
-          
-          // We need to look up each member
-          const userPromises = groupData.memberIds.map(async (memberId: string) => {
-            // If it's the current user, don't need to look up
-            if (memberId === user.uid) {
-              return {
-                uid: user.uid,
-                name: 'You',
-                email: user.email || undefined,
-                isSelected: true
-              };
-            }
-            
-            // Otherwise look up the user document
-            try {
-              const userDoc = await getDoc(doc(db, 'users', memberId));
-              if (userDoc.exists()) {
-                return {
-                  uid: memberId,
-                  name: userDoc.data().name || 'Unknown',
-                  email: userDoc.data().email,
-                  phone: userDoc.data().phone,
-                  isSelected: true
-                };
-              }
-              return {
-                uid: memberId,
-                name: 'User ' + memberId.substring(0, 4),
-                isSelected: true
-              };
-            } catch (err) {
-              console.log(`Error looking up member ${memberId}:`, err);
-              return {
-                uid: memberId,
-                name: 'User ' + memberId.substring(0, 4),
-                isSelected: true
-              };
-            }
-          });
-          
-          membersList = await Promise.all(userPromises);
-          console.log(`Processed ${membersList.length} members from memberIds`);
-        }
-        
-        if (membersList.length > 0) {
-          console.log('Final member list:', membersList.map(m => `${m.name} (${m.uid})`));
-          
-          // Store group member IDs for filtering friend lists
-          const memberIds = membersList.map(member => member.uid);
-          setGroupMemberIds(memberIds);
-          
-          // Clear any previous members first
-          setMembers([]);
-          
-          // Force asynchronous update to ensure UI refreshes
-          setTimeout(() => {
-            console.log("Setting members state with:", membersList.length, "members");
-            
-            // Set members state with the new list
-            setMembers(membersList);
-            
-            // Setup initial selected members state
-            const initialSelectedState: Record<string, boolean> = {};
-            membersList.forEach(member => {
-              initialSelectedState[member.uid] = true;
-            });
-            setSelectedMembers(initialSelectedState);
-            
-            // Set current user as default payer
-            const currentUser = membersList.find(m => m.uid === user.uid);
-            if (currentUser) {
-              setPaidBy(currentUser);
-            }
-            
-            console.log("Updated UI state with members - selected count:", Object.keys(initialSelectedState).length);
-          }, 0);
-          
-          // Also fetch all user's friends to show non-group members for splitting
-          fetchNonGroupFriends(memberIds);
-        } else {
-          console.warn('No members found in group data');
-          // Handle the case where no members are found
-          const currentUser = {
-            uid: user.uid,
-            name: 'You',
-            email: user.email || undefined,
-            isSelected: true
+        membersList = groupData.members.map((member: any) => {
+          const isCurrentUser = member.uid === user.uid || member.id === user.uid;
+          return {
+            uid: member.uid || member.id,              
+            name: isCurrentUser ? 'You' : (member.name || 'Unknown'),
+            email: member.email,
+            phone: member.phone,
+            isAdmin: member.isAdmin,
+            balance: member.balance || 0,
+            isSelected: true            
           };
+        });
+        
+        console.log(`Processed ${membersList.length} members from members array`);
+      } 
+      // If no members array, try using memberIds
+      else if (groupData.memberIds && Array.isArray(groupData.memberIds)) {
+        console.log('Using memberIds array from group data');
+        
+        // We need to look up each member
+        const userPromises = groupData.memberIds.map(async (memberId: string) => {
+          // If it's the current user, don't need to look up
+          if (memberId === user.uid) {
+            return {
+              uid: user.uid,
+              name: 'You',
+              email: user.email || undefined,
+              isSelected: true
+            };
+          }
           
-          setMembers([currentUser]);
-          setPaidBy(currentUser);
-          setSelectedMembers({ [user.uid]: true });
-        }
-      } else {
-        console.log('Group document not found');
-        Alert.alert('Error', 'Group not found');
-        navigation.goBack();
+          // Otherwise look up the user document
+          try {
+            const userDoc = await getDoc(doc(db, 'users', memberId));
+            if (userDoc.exists()) {
+              return {
+                uid: memberId,
+                name: userDoc.data().name || 'Unknown',
+                email: userDoc.data().email,
+                phone: userDoc.data().phone,
+                isSelected: true
+              };
+            }
+            return {
+              uid: memberId,
+              name: 'User ' + memberId.substring(0, 4),
+              isSelected: true
+            };
+          } catch (err) {
+            console.log(`Error looking up member ${memberId}:`, err);
+            return {
+              uid: memberId,
+              name: 'User ' + memberId.substring(0, 4),
+              isSelected: true
+            };
+          }
+        });
+        
+        membersList = await Promise.all(userPromises);
+        console.log(`Processed ${membersList.length} members from memberIds`);
       }
-    } catch (error) {
-      console.error('Error fetching group members:', error);
-      setError('Failed to load group members');
-    } finally {
-      setLoading(false);
+      
+      if (membersList.length > 0) {
+        console.log('Final member list:', membersList.map(m => `${m.name} (${m.uid})`));
+        
+        // Store group member IDs for filtering friend lists
+        const memberIds = membersList.map(member => member.uid);
+        setGroupMemberIds(memberIds);
+        
+        // Important: Set members state with the new list immediately
+        setMembers(membersList);
+        
+        // Setup initial selected members state
+        const initialSelectedState: Record<string, boolean> = {};
+        membersList.forEach(member => {
+          initialSelectedState[member.uid] = true;
+        });
+        setSelectedMembers(initialSelectedState);
+        
+        // Set current user as default payer
+        const currentUser = membersList.find(m => m.uid === user.uid);
+        if (currentUser) {
+          setPaidBy(currentUser);
+        }
+        
+        console.log("Updated UI state with members - selected count:", Object.keys(initialSelectedState).length);
+        
+        // Also fetch all user's friends to show non-group members for splitting
+        fetchNonGroupFriends(memberIds);
+      } else {
+        console.warn('No members found in group data');
+        // Handle the case where no members are found
+        const currentUser = {
+          uid: user.uid,
+          name: 'You',
+          email: user.email || undefined,
+          isSelected: true
+        };
+        
+        setMembers([currentUser]);
+        setPaidBy(currentUser);
+        setSelectedMembers({ [user.uid]: true });
+      }
+    } else {
+      console.log('Group document not found');
+      Alert.alert('Error', 'Group not found');
+      navigation.goBack();
     }
-  };
+  } catch (error) {
+    console.error('Error fetching group members:', error);
+    setError('Failed to load group members');
+    
+    // Fallback to just the current user in case of error
+    const currentUser = {
+      uid: user.uid,
+      name: 'You',
+      email: user.email || undefined,
+      isSelected: true
+    };
+    
+    setMembers([currentUser]);
+    setPaidBy(currentUser);
+    setSelectedMembers({ [user.uid]: true });
+  } finally {
+    setLoading(false);
+  }
+};
   
   // New function to fetch friends that are not in the group
   const fetchNonGroupFriends = async (groupMemberIds: string[]) => {
@@ -1988,47 +2033,54 @@ const saveFriendExpense = async (expenseData: any) => {
   );
   
   // Function to handle changing the group or friend
-  const handleChangeGroupOrFriend = (item: any) => {
-    console.log("Changed group/friend to:", item);
+ // Replace the existing handleChangeGroupOrFriend function (around line 2022)
+// with this improved version
+
+const handleChangeGroupOrFriend = (item: any) => {
+  console.log("Changed group/friend to:", item);
+
+  // Clear existing state first to avoid data from previous group/friend
+  setMembers([]);
+  setSelectedMembers({});
+  setPaidBy(null);
+  setLoading(true);
   
-    // Update the route params first to ensure groupId/friendId are set properly
-    if (item.type === 'group') {
-      navigation.setParams({
-        groupId: item.id,
-        groupName: item.name,
-        friendId: undefined,
-        friendName: undefined
-      });
-      
-      // We need to update our local state variables immediately for the fetch functions to work
-      groupId = item.id;
-      groupName = item.name;
-      friendId = undefined;
-      friendName = undefined;
-      
-      // Reload members for the new group
-      fetchGroupMembers();
-    } else {
-      navigation.setParams({
-        groupId: undefined,
-        groupName: undefined,
-        friendId: item.id,
-        friendName: item.name
-      });
-      
-      // Update local state variables
-      groupId = undefined;
-      groupName = undefined;
-      friendId = item.id;
-      friendName = item.name;
-      
-      // Load friend info
-      setupFriendExpense();
-    }
+  // Update the route params first to ensure groupId/friendId are set properly
+  if (item.type === 'group') {
+    navigation.setParams({
+      groupId: item.id,
+      groupName: item.name,
+      friendId: undefined,
+      friendName: undefined
+    });
     
-    // Close the dropdown
-    setShowGroupDropdown(false);
-  };
+    // We need to update our local state variables immediately for the fetch functions to work
+    groupId = item.id;
+    groupName = item.name;
+    friendId = undefined;
+    friendName = undefined;
+    
+    // The useEffect listening to route.params will handle the fetchGroupMembers call
+  } else {
+    navigation.setParams({
+      groupId: undefined,
+      groupName: undefined,
+      friendId: item.id,
+      friendName: item.name
+    });
+    
+    // Update local state variables
+    groupId = undefined;
+    groupName = undefined;
+    friendId = item.id;
+    friendName = item.name;
+    
+    // The useEffect listening to route.params will handle the setupFriendExpense call
+  }
+  
+  // Close the dropdown
+  setShowGroupDropdown(false);
+};
   
   const renderCustomSplitModal = () => (
     <Modal
