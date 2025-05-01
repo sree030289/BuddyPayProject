@@ -155,11 +155,38 @@ const AddExpenseScreen = () => {
       console.log(`Initial load for friend: ${friendId}`);
       setupFriendExpense(route.params.friendId, route.params.friendName);
     }
+    // Only run the default friends fetch if we don't have a group or friend context
+    else if (user && user.uid) {
+      // Use our fetchDefaultFriends function when there's no group/friend context
+      fetchDefaultFriends();
+    }
     
     // Fetch available groups for dropdown - do this after group/friend setup
     fetchAvailableGroups();
   }, [user?.uid]); // Only depend on user.uid to ensure this runs once when user is available
 
+  // Add this effect to force a re-render when the 'members' state changes
+  useEffect(() => {
+    console.log("Members state changed, length:", members.length);
+    console.log("Members details:", members.map(m => m.name));
+    
+    // Update the selectedMembers whenever members change
+    if (members.length > 0) {
+      const updatedSelectedMembers: Record<string, boolean> = {};
+      members.forEach(member => {
+        updatedSelectedMembers[member.uid] = true; // Select all members by default
+      });
+      setSelectedMembers(updatedSelectedMembers);
+      
+      // Also update paidBy if it's not set or not found in the new members list
+      if (!paidBy || !members.find(m => m.uid === paidBy.uid)) {
+        const currentUser = members.find(m => m.uid === user?.uid);
+        if (currentUser) {
+          setPaidBy(currentUser);
+        }
+      }
+    }
+  }, [members]);
   
   useEffect(() => {
   // Only fetch if user exists
@@ -294,30 +321,12 @@ const AddExpenseScreen = () => {
     };
   }, []);
   
-  // Initialize when component mounts
-  useEffect(() => {
-    console.log("Component mounted with params:", route.params);
+  const setupFriendExpense = async (friendIdParam?: string, friendNameParam?: string) => {
+    // Use the passed parameters or fall back to state variables
+    const targetFriendId = friendIdParam || friendId;
+    const targetFriendName = friendNameParam || friendName;
     
-    // For group expense - ensure this runs first and only once
-    if (route.params?.groupId) {
-      const groupId = route.params.groupId;
-      console.log(`Initial load for group: ${groupId}`);
-      fetchGroupMembers(groupId);
-    } 
-    // For friend expense
-    else if (route.params?.friendId) {
-      const friendId = route.params.friendId;
-      console.log(`Initial load for friend: ${friendId}`);
-      setupFriendExpense();
-    }
-    
-    // Fetch available groups for dropdown - do this after group/friend setup
-    fetchAvailableGroups();
-  }, [user?.uid]); // Only depend on user.uid to ensure this runs once when user is available
-  
-  
-  const setupFriendExpense = async () => {
-    if (!friendId || !user) return;
+    if (!targetFriendId || !user) return;
     
     setLoading(true);
     
@@ -331,17 +340,22 @@ const AddExpenseScreen = () => {
           isSelected: true
         },
         {
-          uid: friendId,
-          name: friendName || 'Friend',
+          uid: targetFriendId,
+          name: targetFriendName || 'Friend',
           isSelected: true
         }
       ];
+      
+      console.log(`Setting up friend expense with: ${targetFriendName} (${targetFriendId})`);
+      console.log(`Members array: ${JSON.stringify(membersArray)}`);
+      
+      // Set members state
       setMembers(membersArray);
       
       // Initialize selected members (both are selected by default)
       const initialSelectedState: Record<string, boolean> = {
         [user.uid]: true,
-        [friendId]: true
+        [targetFriendId]: true
       };
       setSelectedMembers(initialSelectedState);
       
@@ -453,21 +467,31 @@ const AddExpenseScreen = () => {
           const memberIds = membersList.map(member => member.uid);
           setGroupMemberIds(memberIds);
           
-          // Set members state with the new list
-          setMembers(membersList);
+          // Clear any previous members first
+          setMembers([]);
           
-          // Setup initial selected members state
-          const initialSelectedState: Record<string, boolean> = {};
-          membersList.forEach(member => {
-            initialSelectedState[member.uid] = true;
-          });
-          setSelectedMembers(initialSelectedState);
-          
-          // Set current user as default payer
-          const currentUser = membersList.find(m => m.uid === user.uid);
-          if (currentUser) {
-            setPaidBy(currentUser);
-          }
+          // Force asynchronous update to ensure UI refreshes
+          setTimeout(() => {
+            console.log("Setting members state with:", membersList.length, "members");
+            
+            // Set members state with the new list
+            setMembers(membersList);
+            
+            // Setup initial selected members state
+            const initialSelectedState: Record<string, boolean> = {};
+            membersList.forEach(member => {
+              initialSelectedState[member.uid] = true;
+            });
+            setSelectedMembers(initialSelectedState);
+            
+            // Set current user as default payer
+            const currentUser = membersList.find(m => m.uid === user.uid);
+            if (currentUser) {
+              setPaidBy(currentUser);
+            }
+            
+            console.log("Updated UI state with members - selected count:", Object.keys(initialSelectedState).length);
+          }, 0);
           
           // Also fetch all user's friends to show non-group members for splitting
           fetchNonGroupFriends(memberIds);
@@ -526,15 +550,38 @@ const AddExpenseScreen = () => {
               isSelected: false
             }));
             
-            // Store all friends for filtering
+            console.log(`Loaded ${friendsList.length} total friends from contacts`);
+            
+            // Store all friends for filtering but DO NOT add to members array
+            // This prevents combining group members and all friends
             setAllFriends(friendsList);
             
-            // Filter out friends who are already in the group
-            const nonGroupFriends = friendsList.filter(
-              friend => !groupMemberIds.includes(friend.uid)
-            );
+            // Check if group member IDs actually includes user IDs or just string identifiers
+            console.log(`Group member IDs for filtering: ${JSON.stringify(groupMemberIds)}`);
             
-            console.log(`Found ${nonGroupFriends.length} friends who are not in the group`);
+            // Filter out friends who are already in the group - but only store in allFriends, not members
+            const nonGroupFriends = friendsList.filter(friend => {
+              // First check by UID (direct ID match)
+              if (groupMemberIds.includes(friend.uid)) {
+                console.log(`Friend ${friend.name} (${friend.uid}) is in group by UID match`);
+                return false;
+              }
+              
+              // If we have group member details from members array, do more comprehensive check
+              for (const member of members) {
+                // Check if any member in the group matches this friend by phone or email
+                if ((friend.phone && member.phone === friend.phone) || 
+                    (friend.email && member.email === friend.email)) {
+                  console.log(`Friend ${friend.name} matches group member by phone/email`);
+                  return false;
+                }
+              }
+              
+              // If no matches found, this friend is not in the group
+              return true;
+            });
+            
+            console.log(`Found ${nonGroupFriends.length} friends who are not in the group after detailed matching`);
           }
         }
       }
@@ -2998,4 +3045,88 @@ const styles = StyleSheet.create({
     padding: 4
   }
 });
+
+// Helper function to fetch only default friends when not in a group/friend context
+const fetchDefaultFriends = async () => {
+  if (!user) return;
+  
+  try {
+    setLoading(true);
+    console.log('Fetching default friends list for tab bar expense');
+    
+    // Get the user reference
+    const userRef = doc(db, 'users', user.uid);
+    const userSnap = await getDoc(userRef);
+    
+    if (userSnap.exists()) {
+      const userData = userSnap.data();
+      const userPhone = userData.phone;
+      
+      if (userPhone) {
+        // Get friends from the subcollection
+        const friendsRef = collection(db, 'users', userPhone, 'friends');
+        const friendsSnapshot = await getDocs(friendsRef);
+        
+        if (!friendsSnapshot.empty) {
+          // Process friends from the subcollection
+          const friendsList = friendsSnapshot.docs.map(doc => ({
+            uid: doc.id,
+            name: doc.data().name || 'Friend',
+            email: doc.data().email,
+            phone: doc.data().phone,
+            isSelected: false
+          }));
+          
+          console.log(`Loaded ${friendsList.length} friends for default tab bar view`);
+          
+          // Add current user to the beginning of the list
+          const membersList = [
+            {
+              uid: user.uid,
+              name: 'You',
+              email: user.email || undefined,
+              isSelected: true
+            },
+            ...friendsList
+          ];
+          
+          // Set members state
+          setMembers(membersList);
+          
+          // Set current user as default payer
+          setPaidBy(membersList[0]);
+          
+          // Initialize selected members with only the current user selected
+          const initialSelectedState: Record<string, boolean> = {};
+          initialSelectedState[user.uid] = true;
+          membersList.forEach(member => {
+            if (member.uid !== user.uid) {
+              initialSelectedState[member.uid] = false; // Only select user by default
+            }
+          });
+          
+          setSelectedMembers(initialSelectedState);
+          console.log(`Set up default expense view with ${membersList.length} total members but only user selected`);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching default friends:', error);
+    
+    // Fallback to just the current user
+    const currentUser = {
+      uid: user.uid,
+      name: 'You',
+      email: user.email || undefined,
+      isSelected: true
+    };
+    
+    setMembers([currentUser]);
+    setPaidBy(currentUser);
+    setSelectedMembers({ [user.uid]: true });
+  } finally {
+    setLoading(false);
+  }
+};
+
 export default AddExpenseScreen;
