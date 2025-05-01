@@ -189,12 +189,12 @@ const AddExpenseScreen = () => {
   }, [members]);
   
   useEffect(() => {
-  // Only fetch if user exists
-  if (user && user.uid) {
+  // Only fetch if user exists AND we don't have an active group/friend context
+  if (user && user.uid && !route.params?.groupId && !route.params?.friendId) {
     const fetchFriends = async () => {
       try {
         setLoading(true);
-        console.log('Fetching friends for user:', user.uid);
+        console.log('Fetching friends for user (default tab view):', user.uid);
         
         // Approach 1: Try to get friends from user document first
         const userRef = doc(db, 'users', user.uid);
@@ -221,7 +221,7 @@ const AddExpenseScreen = () => {
                 isSelected: false
               }));
               
-              console.log(`Loaded ${friendsList.length} friends from phone number subcollection`);
+              console.log(`Loaded ${friendsList.length} friends from phone number subcollection - tab bar mode`);
               
               // Add current user first in the list
               const membersList = [
@@ -234,17 +234,23 @@ const AddExpenseScreen = () => {
                 ...friendsList
               ];
               
-              setMembers(membersList);
-              
-              // Set current user as default payer
-              setPaidBy(membersList[0]);
-              
-              // Initialize selected members
-              const initialSelectedState: Record<string, boolean> = {};
-              membersList.forEach(member => {
-                initialSelectedState[member.uid] = true; // Select all by default
-              });
-              setSelectedMembers(initialSelectedState);
+              // Only set members if we're in tab bar mode (no group or friend context)
+              if (!route.params?.groupId && !route.params?.friendId) {
+                console.log("Setting members in tab bar mode (no group/friend context)");
+                setMembers(membersList);
+                
+                // Set current user as default payer
+                setPaidBy(membersList[0]);
+                
+                // Initialize selected members
+                const initialSelectedState: Record<string, boolean> = {};
+                membersList.forEach(member => {
+                  initialSelectedState[member.uid] = true; // Select all by default
+                });
+                setSelectedMembers(initialSelectedState);
+              } else {
+                console.log("Skipping friend load because we're in group/friend context");
+              }
               
               setLoading(false);
               return; // Exit early if we successfully loaded friends
@@ -264,9 +270,11 @@ const AddExpenseScreen = () => {
           isSelected: true
         };
         
-        setMembers([currentUser]);
-        setPaidBy(currentUser);
-        setSelectedMembers({ [user.uid]: true });
+        if (!route.params?.groupId && !route.params?.friendId) {
+          setMembers([currentUser]);
+          setPaidBy(currentUser);
+          setSelectedMembers({ [user.uid]: true });
+        }
         
       } catch (error) {
         console.error('Error fetching friends:', error);
@@ -278,18 +286,21 @@ const AddExpenseScreen = () => {
           isSelected: true
         };
         
-        setMembers([currentUser]);
-        setPaidBy(currentUser);
-        setSelectedMembers({ [user.uid]: true });
+        if (!route.params?.groupId && !route.params?.friendId) {
+          setMembers([currentUser]);
+          setPaidBy(currentUser);
+          setSelectedMembers({ [user.uid]: true });
+        }
       } finally {
         setLoading(false);
       }
     };
     
-    // Call the function to fetch friends
+    // Call the function to fetch friends ONLY if we're not in a group/friend context
     fetchFriends();
   }
-}, [user]);
+}, [user, route.params?.groupId, route.params?.friendId]);
+
   // Handle keyboard events to adjust UI
   useEffect(() => {
     const keyboardWillShowSub = Keyboard.addListener(
