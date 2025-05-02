@@ -8,7 +8,7 @@ import {
   User,
   UserCredential
 } from 'firebase/auth';
-import { doc, setDoc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, setDoc, getDoc, collection, query, where, getDocs, updateDoc } from 'firebase/firestore';
 import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -33,6 +33,7 @@ interface AuthContextType {
   }>;
   register: (email: string, password: string, displayName: string, pin: string, phoneNumber?: string) => Promise<void>;
   logout: (navigation?: any) => Promise<void>;
+  updateUser: (userData: any) => void; // Add this new method
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -418,6 +419,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Add the updateUser implementation
+  const updateUser = (userData: any) => {
+    // Merge the existing user data with the new data
+    setUser(prevUser => ({
+      ...prevUser,
+      ...userData
+    }));
+    
+    // Optionally, persist updates to storage if you're using it
+    if (userData.uid) {
+      // Update the user document in Firestore if needed
+      try {
+        const userRef = doc(db, 'users', userData.uid);
+        updateDoc(userRef, userData);
+      } catch (error) {
+        console.error('Error updating user data:', error);
+      }
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -432,7 +453,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isBiometricLoginEnabled,
         checkBiometricAvailability,
         register,
-        logout
+        logout,
+        updateUser // Add the new method to the context value
       }}
     >
       {children}

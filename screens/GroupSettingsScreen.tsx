@@ -21,6 +21,9 @@ import QRCode from 'react-native-qrcode-svg';
 import * as Clipboard from 'expo-clipboard';
 import { useAuth } from '../components/AuthContext';
 import GroupService from '../services/GroupService';
+import { logGroupActivity } from '../utils/activityLogger';
+import { logGroupAdminChange } from '../utils/groupActivityLogger';
+import { logAdminRoleChange } from '../utils/groupAdminActivityLogger';
 
 interface GroupSettingsScreenProps {
   navigation: any;
@@ -236,6 +239,28 @@ const GroupSettingsScreen = ({ navigation, route }: GroupSettingsScreenProps) =>
         'Success', 
         `${selectedMember.name} is ${newAdminStatus ? 'now' : 'no longer'} an admin`
       );
+
+      // Log the activity
+      await logGroupActivity(
+        newAdminStatus ? 'make_admin' : 'remove_admin',
+        user.uid,                // current user's ID
+        user.displayName || 'You', // current user's name
+        groupId,                 // group ID
+        groupName,               // group name
+        selectedMember.uid,      // target member's ID
+        selectedMember.name      // target member's name
+      );
+
+      // Log the activity using the dedicated utility
+      await logAdminRoleChange(
+        newAdminStatus ? 'make_admin' : 'remove_admin',
+        user.uid,
+        user.displayName || 'You',
+        groupId,
+        groupName,
+        selectedMember.uid,
+        selectedMember.name
+      );
     } catch (error) {
       console.error('Error updating admin status:', error);
       Alert.alert('Error', 'Failed to update admin status');
@@ -286,6 +311,17 @@ const GroupSettingsScreen = ({ navigation, route }: GroupSettingsScreenProps) =>
               Alert.alert(
                 'Success', 
                 `${selectedMember.name} has been removed from the group`
+              );
+
+              // Log the activity
+              await logGroupActivity(
+                'remove_member',
+                user.uid,
+                user.displayName || 'You',
+                groupId,
+                groupName,
+                selectedMember.uid,
+                selectedMember.name
               );
             } catch (error) {
               console.error('Error removing member:', error);

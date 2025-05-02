@@ -759,14 +759,34 @@ const fetchGroupMembers = async (groupIdParam?: string) => {
     setShowCategoryModal(false);
   };
   
+  // Update the handleDateChange function to prevent premature closing
   const handleDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(false);
-    if (selectedDate) {
-      setDate(selectedDate);
+    if (Platform.OS === 'android') {
+      // On Android, the picker has "cancel" and "set" actions
+      // Only close if the user clicked outside (cancelled) or confirmed
+      if (event.type === 'set' && selectedDate) {
+        setDate(selectedDate);
+        setShowDatePicker(false);
+        setShowDateModal(false);
+      } else if (event.type === 'dismissed') {
+        // User dismissed the picker without selection
+        setShowDatePicker(false);
+      }
+      // Don't close the picker if the user is still selecting
+    } else {
+      // On iOS, we don't automatically close - let the user press Done
+      if (selectedDate) {
+        setDate(selectedDate);
+      }
     }
-    setShowDateModal(false);
   };
   
+  // Add this helper function to handle explicit date confirmation (for iOS)
+  const confirmDateSelection = () => {
+    setShowDatePicker(false);
+    setShowDateModal(false);
+  };
+
   const handleSplitMethodSelect = (method: string) => {
     setSplitMethod(method);
     setShowSplitModal(false);
@@ -1206,16 +1226,22 @@ const saveExpense = async () => {
       // Save the group expense and capture the reference
       const expenseRef = await saveGroupExpense({...expenseData, groupId: currentGroupId});
       
-      // Log the activity
-      ActivityService.logExpenseAdded(
-        user.uid,
-        user.displayName || 'You',
-        currentGroupId, 
-        groupName,
-        expenseRef?.id || null, // Now we can properly use the expense IDe doesn't return it
-        description,
-        parseFloat(amount)
-      );
+      // Fix: Make sure we're using the correct format for activity data
+      try {
+        // Properly format the log data for group expenses
+        await ActivityService.logExpenseAdded(
+          user.uid,
+          user.displayName || 'You',
+          currentGroupId, 
+          expenseData.groupName || 'Group',
+          null, // We may not have an expense ID yet 
+          description,
+          parseFloat(amount)
+        );
+        console.log('Successfully logged group expense activity');
+      } catch (activityError) {
+        console.error('Error logging expense activity:', activityError);
+      }
     
       // Navigate back to group dashboard with refresh flag
       navigation.navigate('GroupDashboardScreen', {
@@ -1225,31 +1251,37 @@ const saveExpense = async () => {
       });
     } else if (currentFriendId) {
       // Handle friend expense
-        console.log(`Saving as friend expense with friend: ${currentFriendId}`);
-        const expenseRef = await saveFriendExpense({...expenseData, friendId: currentFriendId});
-        if (expenseRef) 
-          {
-          ActivityService.logExpenseAdded(
+      console.log(`Saving as friend expense with friend: ${currentFriendId}`);
+      const expenseRef = await saveFriendExpense({...expenseData, friendId: currentFriendId});
+      
+      // Fix: Make sure we're using the correct format for activity data
+      try {
+        // Properly format the log data for friend expenses
+        await ActivityService.logExpenseAdded(
           user.uid,
           user.displayName || 'You',
           currentFriendId, 
-          expenseData.friendName,
-          expenseRef.id,
+          expenseData.friendName || 'Friend',
+          null, // We may not have an expense ID yet
           description,
           parseFloat(amount)
         );
+        console.log('Successfully logged friend expense activity');
+      } catch (activityError) {
+        console.error('Error logging expense activity:', activityError);
       }
-        // Navigate back to friend dashboard with refresh flag - fix type issue
-        navigation.navigate('FriendsDashboardScreen', {
-          friendId: currentFriendId,
-          friendName: expenseData.friendName || '',
-          totalOwed: 0, // This will be recalculated on the dashboard
-          groups: [], // This will be reloaded on the dashboard
-          email: user.email || undefined,
-          refresh: true
-        });
+        
+      // Navigate back to friend dashboard with refresh flag
+      navigation.navigate('FriendsDashboardScreen', {
+        friendId: currentFriendId,
+        friendName: expenseData.friendName || '',
+        totalOwed: 0, // This will be recalculated on the dashboard
+        groups: [], // This will be reloaded on the dashboard
+        email: user.email || undefined,
+        refresh: true
+      });
     } else if (hasSelectedMembers) {
-      // New case: Handle tab bar expense creation with selected members
+      // Handle tab bar expense creation with selected members
       console.log(`Creating expense from tab bar with selected members`);
       
       // Get all selected members that aren't the current user
@@ -1271,18 +1303,24 @@ const saveExpense = async () => {
             friendId: targetFriendId,
             friendName: targetFriend.name
           });
-          if (expenseRef) {
-          ActivityService.logExpenseAdded(
-            user.uid,
-            user.displayName || 'You',
-            targetFriendId, 
-            targetFriend.name,
-            expenseRef.id,
-            description,
-            parseFloat(amount)
-          );
-        }
-          // Navigate to friend dashboard - fix type issue
+          
+          // Fix: Properly log tab bar created expense
+          try {
+            await ActivityService.logExpenseAdded(
+              user.uid,
+              user.displayName || 'You',
+              targetFriendId, 
+              targetFriend.name,
+              null, // We may not have an expense ID yet
+              description,
+              parseFloat(amount)
+            );
+            console.log('Successfully logged tab bar expense activity');
+          } catch (activityError) {
+            console.error('Error logging expense activity:', activityError);
+          }
+          
+          // Navigate to friend dashboard
           navigation.navigate('FriendsDashboardScreen', {
             friendId: targetFriendId,
             friendName: targetFriend.name,
@@ -1350,9 +1388,11 @@ const validateExpense = () => {
 
   
   const saveGroupExpense = async (expenseData: any) => {
-    if (!groupId || !user) return;
+    if (!groupId || !user) return null;
     
     try {
+      let expenseRef: any = null;
+      
       // Use transaction to ensure atomic updates
       await runTransaction(db, async (transaction) => {
         // 1. Get the current group data
@@ -1366,7 +1406,7 @@ const validateExpense = () => {
         const groupData = groupDoc.data();
         
         // 2. Add the expense to the expenses subcollection
-        const expenseRef = doc(collection(db, 'groups', groupId, 'expenses'));
+        expenseRef = doc(collection(db, 'groups', groupId, 'expenses'));
         transaction.set(expenseRef, {
           ...expenseData,
           id: expenseRef.id
@@ -1434,12 +1474,7 @@ const validateExpense = () => {
         });
       });
       
-      // Navigate back to group dashboard with refresh flag
-      navigation.navigate('GroupDashboardScreen', {
-        groupId,
-        groupName,
-        refresh: true
-      });
+      return expenseRef; // Return the expense reference
       
     } catch (error) {
       console.error('Error saving group expense:', error);
@@ -1448,9 +1483,11 @@ const validateExpense = () => {
   };
   
 const saveFriendExpense = async (expenseData: any) => {
-    if (!friendId || !user) return;
+    if (!friendId || !user) return null;
     
     try {
+      let expenseRef: any = null;
+      
       // Get current user's phone number (needed for friend operations)
       const userRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userRef);
@@ -1485,7 +1522,7 @@ const saveFriendExpense = async (expenseData: any) => {
       // Transaction to update everything atomically
       await runTransaction(db, async (transaction) => {
         // Add expense to the user's friends collection
-        const expenseRef = doc(collection(db, 'users', userPhone, 'friends', friendId, 'expenses'));
+        expenseRef = doc(collection(db, 'users', userPhone, 'friends', friendId, 'expenses'));
         transaction.set(expenseRef, {
           ...expenseData,
           id: expenseRef.id
@@ -1506,14 +1543,7 @@ const saveFriendExpense = async (expenseData: any) => {
         }
       });
       
-      // Navigate back to friend dashboard with refresh flag
-      navigation.navigate('FriendsDashboardScreen', {
-        friendId,
-        friendName,
-        refresh: true, 
-        totalOwed: 0, // This will be recalculated on the dashboard
-        groups: [] // This will be reloaded on the dashboard
-      });
+      return expenseRef; // Return the expense reference
       
     } catch (error) {
       console.error('Error saving friend expense:', error);
@@ -1610,6 +1640,7 @@ const saveFriendExpense = async (expenseData: any) => {
     </Modal>
   );
   
+  // Update the renderDateModal function to include a confirmation button for iOS
   const renderDateModal = () => (
     <Modal
       visible={showDateModal}
@@ -1658,13 +1689,25 @@ const saveFriendExpense = async (expenseData: any) => {
           </View>
           
           {showDatePicker && (
-            <DateTimePicker
-              value={date}
-              mode="date"
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-              onChange={handleDateChange}
-              style={styles.datePicker}
-            />
+            <>
+              <DateTimePicker
+                value={date}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={handleDateChange}
+                style={styles.datePicker}
+              />
+              
+              {/* Add Done button for iOS */}
+              {Platform.OS === 'ios' && (
+                <TouchableOpacity
+                  style={styles.dateConfirmButton}
+                  onPress={confirmDateSelection}
+                >
+                  <Text style={styles.dateConfirmButtonText}>Done</Text>
+                </TouchableOpacity>
+              )}
+            </>
           )}
         </View>
       </View>
@@ -3218,7 +3261,21 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     color: '#FF3B30',
     fontSize: 14
-  }
+  },
+  dateConfirmButton: {
+    backgroundColor: PURPLE_COLOR,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginVertical: 16,
+    marginHorizontal: 16,
+    alignItems: 'center',
+  },
+  dateConfirmButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
 });
 
 // Helper function to fetch only default friends when not in a group/friend context
