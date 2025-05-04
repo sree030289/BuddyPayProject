@@ -108,62 +108,6 @@ const ActivityScreen = () => {
     console.log(`Activity ${activity.id} of type: ${activity.type}`);
     console.log("Activity data:", JSON.stringify(activity.data || {}, null, 2));
     
-    // Check for explicit demotion indicators
-    const explicitDemotion = 
-      activity.type === 'admin_demotion' || 
-      activity.type === 'admin_role_removed' ||
-      activity.data?.actionType === 'demotion' || 
-      activity.data?.isDemotion === true;
-    
-    // Handle explicit demotion activities first  
-    if (explicitDemotion) {
-      if (activity.userId === user?.uid && activity.type === 'admin_role_removed') {
-        // User was demoted
-        return (
-          <View style={styles.activityItem}>
-            <View style={styles.activityIcon}>
-              <Ionicons name="person-remove-circle-outline" size={24} color="#8A2BE2" />
-            </View>
-            <View style={styles.activityContent}>
-              <Text style={styles.activityText}>
-                <Text style={styles.activityName}>You</Text>
-                {' were removed as an admin from '}
-                <Text style={styles.activityHighlight}>
-                  {activity.targetName || 'a group'}
-                </Text>
-                {activity.data?.removedBy ? ` by ${activity.data.removedBy}` : ''}
-              </Text>
-              <Text style={styles.activityTime}>{formatTime(activity.timestamp)}</Text>
-            </View>
-          </View>
-        );
-      } else {
-        // User demoted someone else
-        return (
-          <View style={styles.activityItem}>
-            <View style={styles.activityIcon}>
-              <Ionicons name="person-remove-circle-outline" size={24} color="#8A2BE2" />
-            </View>
-            <View style={styles.activityContent}>
-              <Text style={styles.activityText}>
-                <Text style={styles.activityName}>{activity.userName}</Text>
-                {' removed admin privileges from '}
-                <Text style={styles.activityHighlight}>
-                  {activity.data?.demotedName || 'a member'}
-                </Text>
-                {' in '}
-                <Text style={styles.activityHighlight}>
-                  {activity.targetName || 'a group'}
-                </Text>
-              </Text>
-              <Text style={styles.activityTime}>{formatTime(activity.timestamp)}</Text>
-            </View>
-          </View>
-        );
-      }
-    }
-    
-    // Continue with all other activity types
     switch (activity.type) {
       case 'expense_added':
         return (
@@ -330,8 +274,80 @@ const ActivityScreen = () => {
           </View>
         );
 
-      // Removed member_promoted, promoted_to_admin, member_demoted, demoted_from_admin cases
-      // since they're now handled above
+      // Add these new cases for admin role changes
+      case 'promoted_to_admin':
+      case 'member_promoted':
+        return (
+          <View style={styles.activityItem}>
+            <View style={styles.activityIcon}>
+              <Ionicons name="person-add-outline" size={24} color="#4CAF50" />
+            </View>
+            <View style={styles.activityContent}>
+              <Text style={styles.activityText}>
+                <Text style={styles.activityName}>{activity.data?.promotedBy || activity.userName}</Text>
+                {' promoted '}
+                <Text style={styles.activityHighlight}>
+                  {activity.data?.targetName || activity.data?.memberName || 'a member'}
+                </Text>
+                {' to admin in '}
+                <Text style={styles.activityHighlight}>
+                  {activity.data?.groupName || activity.targetName}
+                </Text>
+              </Text>
+              <Text style={styles.activityTime}>{formatTime(activity.timestamp)}</Text>
+            </View>
+          </View>
+        );
+        
+      case 'demoted_from_admin':
+      case 'member_demoted':
+      case 'admin_role_removed':
+      case 'admin_demotion':
+        // For when the user was demoted
+        if (activity.userId === user?.uid && 
+           (activity.targetId === user?.uid || activity.data?.targetId === user?.uid)) {
+          return (
+            <View style={styles.activityItem}>
+              <View style={styles.activityIcon}>
+                <Ionicons name="person-remove-outline" size={24} color="#FF5252" />
+              </View>
+              <View style={styles.activityContent}>
+                <Text style={styles.activityText}>
+                  <Text style={styles.activityName}>You</Text>
+                  {' were removed as an admin from '}
+                  <Text style={styles.activityHighlight}>
+                    {activity.data?.groupName || activity.targetName || 'a group'}
+                  </Text>
+                  {activity.data?.removedBy ? ` by ${activity.data.removedBy}` : ''}
+                </Text>
+                <Text style={styles.activityTime}>{formatTime(activity.timestamp)}</Text>
+              </View>
+            </View>
+          );
+        } else {
+          // For when the user demoted someone else
+          return (
+            <View style={styles.activityItem}>
+              <View style={styles.activityIcon}>
+                <Ionicons name="person-remove-outline" size={24} color="#FF5252" />
+              </View>
+              <View style={styles.activityContent}>
+                <Text style={styles.activityText}>
+                  <Text style={styles.activityName}>{activity.data?.demotedBy || activity.userName}</Text>
+                  {' removed admin privileges from '}
+                  <Text style={styles.activityHighlight}>
+                    {activity.data?.targetName || activity.data?.memberName || 'a member'}
+                  </Text>
+                  {' in '}
+                  <Text style={styles.activityHighlight}>
+                    {activity.data?.groupName || activity.targetName || 'a group'}
+                  </Text>
+                </Text>
+                <Text style={styles.activityTime}>{formatTime(activity.timestamp)}</Text>
+              </View>
+            </View>
+          );
+        }
       
       // Fallback for unknown types
       default:
@@ -429,14 +445,14 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     paddingTop: 8,
-    paddingBottom: 85, // Increased to account for tab bar
+    paddingBottom: Platform.OS === 'ios' ? 120 : 100, // Increased to ensure content isn't hidden
   },
   listEmptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-    paddingBottom: 85, // Added for tab bar
+    paddingBottom: Platform.OS === 'ios' ? 120 : 100, // Increased padding
   },
   activityItem: {
     flexDirection: 'row',

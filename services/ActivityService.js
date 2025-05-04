@@ -1,4 +1,5 @@
 import ActivityService from '../services/ActivityService';
+import { Platform } from 'react-native'; // Add this import
 
 /**
  * Comprehensive logger for all user activities in the app
@@ -55,16 +56,14 @@ export const logGroupActivity = async (
         }
         console.error('Missing target info for make_admin activity');
         break;
-        
       case 'remove_admin':
         if (targetId && targetName) {
-            return await ActivityService.logMemberDemoted(
+            return await ActivityService.logMemberPromoted(
             userId, userName, groupId, groupName, targetId, targetName
             );
         }
-        console.error('Missing target info for remove_admin activity');
+        console.error('Missing target info for make_admin activity');
         break;
-        
       default:
         console.warn(`Unknown group action type: ${actionType}`);
     }
@@ -156,5 +155,104 @@ export const logSettlementActivity = async (
   } catch (error) {
     console.error('Error logging settlement activity:', error);
     return null;
+  }
+};
+
+// Update or add this method to properly capture member name
+export const logMemberPromoted = async (
+  userId,
+  userName,
+  groupId,
+  groupName,
+  targetId,
+  targetName
+) => {
+  try {
+    const activityData = {
+      type: 'member_promoted',
+      userId,
+      userName,
+      targetId: groupId,
+      targetName: groupName,
+      timestamp: new Date(),
+      isRead: false,
+      data: {
+        groupId,
+        groupName,
+        targetId,
+        targetName,
+        promotedBy: userName,
+        memberName: targetName // Ensure member name is included
+      }
+    };
+
+    // Add to user's activity feed
+    await addActivity(userId, activityData);
+
+    // Also add to target user's feed if it's not the same person
+    if (targetId !== userId) {
+      const promotedActivity = {
+        ...activityData,
+        type: 'promoted_to_admin',
+        userId: targetId,
+        userName: targetName,
+      };
+      await addActivity(targetId, promotedActivity);
+    }
+
+    console.log(`Logged member_promoted activity for user ${userName} and target ${targetName}`);
+    return true;
+  } catch (error) {
+    console.error('Error logging member promoted activity:', error);
+    return false;
+  }
+};
+
+export const logMemberDemoted = async (
+  userId,
+  userName,
+  groupId,
+  groupName,
+  targetId,
+  targetName
+) => {
+  try {
+    const activityData = {
+      type: 'member_demoted',
+      userId,
+      userName,
+      targetId: groupId,
+      targetName: groupName,
+      timestamp: new Date(),
+      isRead: false,
+      data: {
+        groupId,
+        groupName,
+        targetId,
+        targetName,
+        demotedBy: userName,
+        memberName: targetName // Ensure member name is included
+      }
+    };
+
+    // Add to user's activity feed
+    await addActivity(userId, activityData);
+
+    // Also add to target user's feed if it's not the same person
+    if (targetId !== userId) {
+      const demotedActivity = {
+        ...activityData,
+        type: 'demoted_from_admin',
+        userId: targetId,
+        userName: targetName,
+      };
+      await addActivity(targetId, demotedActivity);
+    }
+
+    console.log(`Logged member_demoted activity for user ${userName} and target ${targetName}`);
+    return true;
+  } catch (error) {
+    console.error('Error logging member demoted activity:', error);
+    return false;
   }
 };

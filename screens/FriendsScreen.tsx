@@ -30,6 +30,7 @@ import {
 } from 'firebase/firestore';
 import { useAuth } from '../components/AuthContext';
 import { formatCurrency } from '../utils/formatCurrency';
+import BottomNavigator from '../components/BottomNavigator';
 
 type FriendsScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'FriendsScreen'>;
 
@@ -122,7 +123,7 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
 
       if (!userSnapshot.empty) {
         const userData = userSnapshot.docs[0].data();
-        const userPhone = userData.phone;
+        const userPhone = userData.phoneNumber;
 
         if (!userPhone) {
           setError('Phone number not set in your profile');
@@ -444,6 +445,13 @@ const FriendsScreen = ({ navigation, route }: FriendsScreenProps) => {
       </View>
       
       {renderFilterModal()}
+      
+      {/* Add our new bottom navigator */}
+      {/* Only show the bottom navigator if we're not inside a tab navigator */}
+      {/* Check route.params.insideTabNavigator to know if we're in a tab navigator */}
+      {!route?.params?.insideTabNavigator && (
+        <BottomNavigator activeTab="Friends" />
+      )}
     </SafeAreaView>
   );
 };

@@ -18,6 +18,7 @@ import { useAuth } from '../components/AuthContext';
 import GroupService from '../services/GroupService';
 import { useFocusEffect } from '@react-navigation/native';
 import { formatCurrency } from '../utils/formatCurrency';
+import BottomNavigator from '../components/BottomNavigator';
 
 interface GroupsScreenProps {
   navigation: any;
@@ -377,6 +378,11 @@ const GroupsScreen = ({ navigation, route }: GroupsScreenProps) => {
       </View>
       
       {renderFilterModal()}
+      
+      {/* Only show the bottom navigator if we're not inside a tab navigator */}
+      {!route?.params?.insideTabNavigator && (
+        <BottomNavigator activeTab="Groups" />
+      )}
     </SafeAreaView>
   );
 };

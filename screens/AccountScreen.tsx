@@ -20,7 +20,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
 import { useAuth } from '../components/AuthContext';
-import SharedTabBar from '../components/SharedTabBar';
+import BottomNavigator from '../components/BottomNavigator';
 
 const AccountScreen = ({ route }: any) => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -686,9 +686,9 @@ const AccountScreen = ({ route }: any) => {
           <Text style={styles.versionText}>BuddyPay v1.0.0</Text>
         </ScrollView>
         
-        {/* Shared Tab Bar Component - will be rendered by the parent navigator */}
-        {route?.params?.insideTabNavigator !== true && (
-          <SharedTabBar activeTab="Profile" />
+        {/* Replace existing SharedTabBar with our new component */}
+        {!route?.params?.insideTabNavigator && (
+          <BottomNavigator activeTab="Account" />
         )}
         
         {/* Modals */}
