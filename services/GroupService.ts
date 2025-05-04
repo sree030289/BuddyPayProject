@@ -526,6 +526,127 @@ class GroupService {
       throw error;
     }
   }
+
+  // Add these methods to your existing GroupService file:
+
+  async createGroupInviteLink(groupId: string, createdBy: string): Promise<string> {
+    try {
+      const groupRef = firestore().collection('groups').doc(groupId);
+      const groupDoc = await groupRef.get();
+      
+      if (!groupDoc.exists) {
+        throw new Error('Group not found');
+      }
+      
+      // Generate a unique token
+      const token = uuidv4();
+      
+      // Store the invite link in Firestore
+      await firestore().collection('groupInvites').doc(token).set({
+        groupId,
+        createdBy,
+        createdAt: firestore.FieldValue.serverTimestamp(),
+        expiresAt: firestore.Timestamp.fromDate(
+          new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days from now
+        ),
+        active: true,
+      });
+      
+      return token;
+    } catch (error) {
+      console.error('Error creating group invite link:', error);
+      throw error;
+    }
+  }
+
+  async joinGroupWithToken(token: string, userId: string): Promise<{ success: boolean; groupId?: string; groupName?: string; error?: string }> {
+    try {
+      // Get the invite document
+      const inviteRef = firestore().collection('groupInvites').doc(token);
+      const inviteDoc = await inviteRef.get();
+      
+      if (!inviteDoc.exists) {
+        return { success: false, error: 'Invalid invite link' };
+      }
+      
+      const inviteData = inviteDoc.data();
+      
+      // Check if the invite is still valid
+      if (!inviteData.active || new Date() > inviteData.expiresAt.toDate()) {
+        return { success: false, error: 'Invite link has expired' };
+      }
+      
+      // Get the group
+      const groupRef = firestore().collection('groups').doc(inviteData.groupId);
+      const groupDoc = await groupRef.get();
+      
+      if (!groupDoc.exists) {
+        return { success: false, error: 'Group not found' };
+      }
+      
+      const groupData = groupDoc.data();
+      
+      // Check if user is already in the group
+      if (groupData.memberIds && groupData.memberIds.includes(userId)) {
+        return { 
+          success: true, 
+          groupId: inviteData.groupId, 
+          groupName: groupData.name,
+          error: 'You are already a member of this group' 
+        };
+      }
+      
+      // Get user info
+      const userDoc = await firestore().collection('users').doc(userId).get();
+      if (!userDoc.exists) {
+        return { success: false, error: 'User not found' };
+      }
+      
+      const userData = userDoc.data();
+      
+      // Add user to group
+      await firestore().runTransaction(async (transaction) => {
+        // Update memberIds array
+        transaction.update(groupRef, {
+          memberIds: firestore.FieldValue.arrayUnion(userId),
+        });
+        
+        // Add to members array with full user info
+        const membersRef = groupRef.collection('members').doc(userId);
+        transaction.set(membersRef, {
+          uid: userId,
+          name: userData.name || 'Unknown',
+          email: userData.email || null,
+          phone: userData.phone || null,
+          photoURL: userData.photoURL || null,
+          joinedAt: firestore.FieldValue.serverTimestamp(),
+          isAdmin: false,
+          balance: 0,
+        });
+      });
+      
+      // Log activity
+      await firestore().collection('activities').add({
+        type: 'join_group',
+        groupId: inviteData.groupId,
+        groupName: groupData.name,
+        userId,
+        userName: userData.name || 'Unknown',
+        timestamp: firestore.FieldValue.serverTimestamp(),
+        inviteToken: token,
+        invitedBy: inviteData.createdBy,
+      });
+      
+      return { 
+        success: true, 
+        groupId: inviteData.groupId, 
+        groupName: groupData.name 
+      };
+    } catch (error) {
+      console.error('Error joining group with token:', error);
+      return { success: false, error: error.message || 'Failed to join group' };
+    }
+  }
 }
 
 // Export a singleton instance
