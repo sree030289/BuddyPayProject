@@ -7,6 +7,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "backgroundColor": "#c4eaf1",
+    "sdkVersion": "52.0.0",
     "splash": {
       "image": "./assets/logo.png",
       "resizeMode": "contain",
@@ -19,15 +20,26 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.svaag.buddypay",
       "infoPlist": {
-        "NSFaceIDUsageDescription": "This app uses Face ID to provide a secure and convenient login experience."
-      }
+        "NSFaceIDUsageDescription": "This app uses Face ID to provide a secure and convenient login experience.",
+        "UIBackgroundModes": []
+      },
+      "developmentTeam": "SREERAM K VENNAPUSA"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#c4eaf1"
       },
-      "package": "com.svaag.buddypay"
+      "package": "com.svaag.buddypay",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "android.permission.CAMERA",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
+      ],
+      "softwareKeyboardLayoutMode": "pan"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -40,7 +52,25 @@
         }
       ],
       "expo-secure-store",
-      "expo-font"
-    ]
+      "expo-font",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow $(PRODUCT_NAME) to use Face ID."
+        }
+      ]
+    ],
+    "runtimeVersion": {
+      "policy": "sdkVersion"
+    },
+    "updates": {
+      "enabled": true,
+      "fallbackToCacheTimeout": 0
+    },
+    "extra": {
+      "eas": {
+        "projectId": "84fbd305-e0df-4765-a269-44ee32d41f48"
+      }
+    }
   }
 }
